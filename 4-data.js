@@ -1,6 +1,11 @@
-// data.js — Edite aqui sua base de dados
+// data.js — BASE DE DADOS local
+// Copie sua base real aqui em formato de array.
+// Cada linha é um array de colunas, como no Google Sheets.
+
 window.BASE_DE_DADOS = [
   ['Ordem','Unidade','UniNorm','Bloco','Pavimento','AmbTag','NomeAmb','Verificação','Aval','Adeq','Inad','Pend','Obs','UID'],
+
+  // EXEMPLOS — troque pelos seus dados reais:
   ['1','REI PELE','rei pele','Bloco A','1º Andar','AMB01','Recepção','Verificar piso','Não','FALSO','FALSO','','','rei pele||bloco a||1º andar||recepção||verificar piso'],
   ['2','REI PELE','rei pele','Bloco A','1º Andar','AMB01','Recepção','Verificar iluminação','Não','FALSO','FALSO','','','rei pele||bloco a||1º andar||recepção||verificar iluminação'],
   ['3','REI PELE','rei pele','Bloco A','2º Andar','AMB02','Corredor','Verificar corrimão','Não','FALSO','FALSO','','','rei pele||bloco a||2º andar||corredor||verificar corrimão'],
