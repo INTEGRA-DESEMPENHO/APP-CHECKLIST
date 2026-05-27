@@ -151,7 +151,7 @@ function carregar(u){
   if(u===undefined)u=document.getElementById('u').value.trim();
   invCache();invRsCache();
   carregarStatus();
-  DB=window.BASE_DE_DADOS||[];
+  DB=window.BASE_DE_DADOS||[]; // Carrega do data.js
   popularFiltros();
   renderLista();
   updContadores();
@@ -362,10 +362,7 @@ function cardH(item,idx){
   '</div>';
 }
 
-// ─── Render lista principal (quase igual ao seu original) ──────
-// (para não estourar a resposta, se quiser eu te envio só essa função separada
-//  caso precise ajustar a lógica visual.)
-
+// ─── Render lista principal ────────────────────────────────
 function renderLista(){
   var lista=document.getElementById('lista');
   var u=document.getElementById('u').value.trim();
@@ -442,26 +439,93 @@ function renderLista(){
                sf==='AVALIADOS_OK'?'Nenhum item OK. Avalie os itens primeiro.':'✅ Nenhuma pendência!';
       parts.push('<div class="empty">'+msg2+'</div>');
     }else{
-      // (por brevidade, aqui você pode colar o mesmo bloco de agrupamento por subambiente
-      // do seu código original — ele funciona igual, pois usa subMap/statusCache)
-      // Se quiser, te mando essa parte separada também.
-      subs.forEach(function(k,index){
-        // Simples: só lista subambientes clicáveis
-        var d=subMap[k];
-        var ex=d.itens[0];
-        var dn=(d.bloco?d.bloco+' - ':'')+(d.pav?d.pav+' - ':'')+d.sub;
-        parts.push(
-          '<div class="cnv2" data-uni="'+esc(ex[DI.UNI])+'" data-bl="'+esc(d.bloco)+'" data-pav="'+esc(d.pav)+'" data-sub="'+esc(d.sub)+'" data-filt="'+esc(sf)+'">'+
-            '<div>'+
-              '<div style="font-weight:700;font-size:16px;color:var(--text);">'+esc(dn)+'</div>'+
-              '<div style="font-size:13px;color:var(--text2);margin-top:4px;">'+
-                '📋 '+d.total+' itens · ✅ '+d.ok+' · ❌ '+d.nk+' · ⚫ '+d.na+' · ⬜ '+d.naoAv+
-              '</div>'+
-            '</div>'+
-            '<span style="font-size:20px;color:var(--text2);">›</span>'+
-          '</div>'
-        );
-      });
+      // Agrupamento por subambiente (cards clicáveis)
+      var inadSubs = subs.filter(k => subMap[k].nk > 0);
+      if ((sf === 'INADEQUACOES' || sf === 'TUDO') && inadSubs.length) {
+        parts.push('<h2 class="stit" style="color:var(--danger);">❌ REAVALIAÇÕES PENDENTES</h2>');
+        inadSubs.forEach(k => {
+          const d = subMap[k];
+          const vis = d.ok + d.nk + d.na;
+          const flt = d.total - vis;
+          const ex = d.itens.find(it => statusCache[it[DI.UID]] === 'Inadequado') || d.itens[0];
+          const dn = (d.bloco ? d.bloco + ' - ' : '') + (d.pav ? d.pav + ' - ' : '') + d.sub;
+          parts.push(
+            `<div class="cig" data-uni="${esc(ex[DI.UNI])}" data-bl="${esc(d.bloco)}" data-pav="${esc(d.pav)}" data-sub="${esc(d.sub)}" data-filt="INADEQUACOES">` +
+              `<div><div style="font-weight:700;font-size:16px;color:var(--danger);">${esc(dn)}</div>` +
+              `<div style="font-size:13px;color:var(--text2);margin-top:4px;">` +
+              `<span style="color:var(--danger);">❌ ${d.nk} inad.</span> • ` +
+              `<span style="color:var(--primary);">📋 ${vis} visit.</span> • ` +
+              `<span style="color:var(--warning);">⏳ ${flt} falt.</span></div></div>` +
+              `<span style="font-size:20px;color:var(--danger);">›</span></div>`
+          );
+        });
+      }
+
+      const naPSubs = subs.filter(k => subMap[k].na > 0);
+      if ((sf === 'NA_PENDENTES' || sf === 'TUDO') && naPSubs.length) {
+        parts.push('<h2 class="stit" style="color:var(--na);">⚫ N/A PENDENTES — RETORNAR</h2>');
+        naPSubs.forEach(k => {
+          const d = subMap[k];
+          const vis = d.ok + d.nk + d.na;
+          const flt = d.total - vis;
+          const ex = d.itens.find(it => statusCache[it[DI.UID]] === 'N/A') || d.itens[0];
+          const dn = (d.bloco ? d.bloco + ' - ' : '') + (d.pav ? d.pav + ' - ' : '') + d.sub;
+          parts.push(
+            `<div class="cng" data-uni="${esc(ex[DI.UNI])}" data-bl="${esc(d.bloco)}" data-pav="${esc(d.pav)}" data-sub="${esc(d.sub)}" data-filt="NA_PENDENTES">` +
+              `<div><div style="font-weight:700;font-size:16px;color:var(--na);">${esc(dn)}</div>` +
+              `<div style="font-size:13px;color:var(--text2);margin-top:4px;">` +
+              `<span style="color:var(--na);">⚫ ${d.na} N/A</span> • ` +
+              `<span style="color:var(--primary);">📋 ${vis} visit.</span> • ` +
+              `<span style="color:var(--warning);">⏳ ${flt} falt.</span></div></div>` +
+              `<span style="font-size:20px;color:var(--na);">›</span></div>`
+          );
+        });
+      }
+
+      const okSubs = subs.filter(k => subMap[k].ok > 0);
+      if ((sf === 'AVALIADOS_OK' || sf === 'TUDO') && okSubs.length) {
+        parts.push('<h2 class="stit" style="color:var(--success);">🔄 AVALIADOS OK — REAVALIAR</h2>');
+        parts.push('<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:14px;padding:12px 14px;margin-bottom:16px;font-size:12px;color:#166534;line-height:1.6">' +
+          '<b>📋 Regra:</b> Itens OK devem ser reavaliados a cada <b>6 meses</b>.</div>');
+        okSubs.forEach(k => {
+          const d = subMap[k];
+          const ex = d.itens.find(it => statusCache[it[DI.UID]] === 'Ok') || d.itens[0];
+          const dn = (d.bloco ? d.bloco + ' - ' : '') + (d.pav ? d.pav + ' - ' : '') + d.sub;
+          const venc = d.itens.filter(it => statusCache[it[DI.UID]] === 'Ok' && precisaReaval(it[DI.UID])).length;
+          const vB = venc > 0 ? `<span style="background:#fef3c7;color:#92400e;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;margin-left:6px;">🔄 ${venc} venc.</span>` : '';
+          parts.push(
+            `<div class="cokl" data-uni="${esc(ex[DI.UNI])}" data-bl="${esc(d.bloco)}" data-pav="${esc(d.pav)}" data-sub="${esc(d.sub)}" data-filt="AVALIADOS_OK">` +
+              `<div><div style="font-weight:700;font-size:16px;color:var(--success);display:flex;align-items:center;flex-wrap:wrap;gap:4px;">${esc(dn)}${vB}</div>` +
+              `<div style="font-size:13px;color:var(--text2);margin-top:4px;">` +
+              `<span style="color:var(--success);">✅ ${d.ok} adeq.</span> • ` +
+              `<span>📋 ${d.total} total</span></div></div>` +
+              `<span style="font-size:20px;color:var(--success);">›</span></div>`
+          );
+        });
+      }
+
+      const naoAvSubs = subs.filter(k => subMap[k].naoAv > 0 && (sf === 'NAO_AVALIADOS' || (subMap[k].nk === 0 && subMap[k].na === 0)));
+      if ((sf === 'NAO_AVALIADOS' || sf === 'TUDO') && naoAvSubs.length) {
+        parts.push('<h2 class="stit" style="color:var(--warning);">⬜ SUBAMBIENTES NÃO AVALIADOS</h2>');
+        parts.push('<div style="font-size:13px;color:var(--text2);margin-bottom:12px;padding:8px 12px;background:#fff3e0;border-radius:12px;">' +
+          '📋 <strong>' + naoAvSubs.length + ' subambiente(s)</strong> aguardando avaliação. Clique para iniciar.</div>');
+        naoAvSubs.forEach(k => {
+          const d = subMap[k];
+          const vis = d.ok + d.nk + d.na;
+          const flt = d.total - vis;
+          const ex = d.itens.find(it => statusCache[it[DI.UID]] === 'Nao Avaliado') || d.itens[0];
+          const dn = (d.bloco ? d.bloco + ' - ' : '') + (d.pav ? d.pav + ' - ' : '') + d.sub;
+          parts.push(
+            `<div class="cnv2" data-uni="${esc(ex[DI.UNI])}" data-bl="${esc(d.bloco)}" data-pav="${esc(d.pav)}" data-sub="${esc(d.sub)}" data-filt="NAO_AVALIADOS">` +
+              `<div><div style="font-weight:700;font-size:16px;color:var(--warning);">${esc(dn)}</div>` +
+              `<div style="font-size:13px;color:var(--text2);margin-top:4px;">` +
+              `<span style="color:var(--warning);">⬜ ${d.naoAv} não aval.</span> • ` +
+              `<span style="color:var(--primary);">📋 ${vis} visit.</span> • ` +
+              `<span style="color:var(--warning);">⏳ ${flt} falt.</span></div></div>` +
+              `<span style="font-size:20px;color:var(--warning);">›</span></div>`
+          );
+        });
+      }
     }
   }
 
@@ -634,14 +698,14 @@ function tentarSalvar(){
       resp,
       u,
       b,
-      sub||s.amb,
-      FSUB.length?'(Fotos sub local)': '',
+      sub||s.amb, // Usa o subambiente do filtro se houver, senão o do item
+      FSUB.length?'(Fotos sub local)': '', // Indica se há fotos de subambiente
       s.pav||'',
       s.amb||'',
       s.p||'',
       s.v||'',
       s.obs||'',
-      s.fotos.length?'(Fotos item local)':'',
+      s.fotos.length?'(Fotos item local)':'', // Indica se há fotos de item
       s.tipo||'',
       (s.achados||[]).join(', ')
     ];
@@ -855,6 +919,8 @@ function pararVoz(){
 
 // ─── Eventos de UI ─────────────────────────────────────────
 function onClick(e){
+  e.preventDefault(); // <--- ADICIONADO: Impede o comportamento padrão (scroll, etc.)
+
   var t=e.target;
 
   var bopt=t.closest&&t.closest('.bopt');
