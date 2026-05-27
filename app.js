@@ -1,13 +1,22 @@
-/* Vistoria Fênix v9 — app.js
- * 100% local (localStorage) — sem backend
- */
+// app.js — Frontend para Vistoria Fênix v9 (OTIMIZADO)
+// Comunica-se com SheetDB.io para leitura da BASE DE DADOS e Google Apps Script para escrita/status.
 
-// ─── Chaves no localStorage ───────────────────────────────
-var LS_STATUS    = 'vfx_status_v9';     // { uid: { status, obs, achados, dataUltimaAval } }
-var LS_RESPOSTAS = 'vfx_respostas_v9';  // [ [Data,Inspetor,Unidade,...] ]
+// --- CONFIGURAÇÃO ---
+// COLOQUE A URL DO SEU GOOGLE APPS SCRIPT AQUI!
+// Ex: 'https://script.google.com/macros/s/AKfycb.../exec'
+const GAS_WEB_APP_URL = 'SEU_GAS_WEB_APP_URL_AQUI'; // <-- SUBSTITUA AQUI!
+
+// COLOQUE A URL DA SUA API SHEETDB.IO AQUI!
+// Ex: 'https://sheetdb.io/api/v1/p5kdwbijb335u'
+const SHEETDB_API_URL = 'https://sheetdb.io/api/v1/p5kdwbijb335u'; // <-- SUBSTITUA AQUI!
+
+// --- Chaves no localStorage ---
 var LS_FILTROS   = 'vfx_filt_v9';
+var LS_CACHE_DB  = 'vfx_cache_db_v9';  // Cache da BASE DE DADOS (do SheetDB)
+var LS_CACHE_ST  = 'vfx_cache_st_v9';  // Cache dos STATUS (do GAS)
+var LS_FILA_SAVE = 'vfx_fila_save_v9'; // Fila de pacotes para salvar (para o GAS)
 
-// ─── Constantes ───────────────────────────────────────────
+// --- Constantes ---
 var CICLOS = {
   'rei pele':       {i:1,f:6},
   'papa francisco': {i:2,f:7},
@@ -25,24 +34,26 @@ var ACHADOS = [
   'Piso danificado','Porta/janela com defeito'
 ];
 
-var DI = {
+var DI = { // Índices das colunas (ajustados para o formato SheetDB ou GAS)
   ORD:0,UNI:1,UNINORM:2,BLC:3,PAV:4,AMB_TAG:5,
   SUB:6,DESC:7,AVAL:8,ADEQ:9,INAD:10,PEND:11,OBS:12,UID:13
 };
 
-// ─── Estado em memória ─────────────────────────────────────
-var DB = [];         // BASE_DE_DADOS
-var STATUS = {};     // mapa por UID
-var SEL = [];        // seleções da sessão atual
-var FSUB = [];       // fotos do subambiente atual (em base64)
-var FOTO_CTX = null; // {tipo:'item'|'sub',uid?}
-var _rsCache = {};   // cache de resStatus
+// --- Estado em memória ---
+var DB = [];         // Dados da BASE DE DADOS (carregados do SheetDB ou cache)
+var STATUS = {};     // Últimos status dos itens (carregados do GAS ou cache)
+var SEL = [];        // Seleções da sessão atual (itens marcados para salvar)
+var FSUB = [];       // Fotos do subambiente atual (em base64)
+var FOTO_CTX = null; // Contexto da foto (item ou subambiente)
+var _rsCache = {};   // Cache para resStatus
 function invRsCache(){_rsCache={};}
 
-// ─── Utilitários simples ───────────────────────────────────
+// --- Utilitários ---
 function nrm(s){
-  return (s||'').toString().trim().toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  return (s||'').toString().trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g,'');
 }
 function nrmU(s){return nrm(s);}
 function esc(s){
@@ -61,7 +72,7 @@ function fmtDataHora(dt){
   return dt.toLocaleDateString('pt-BR')+' '+dt.toLocaleTimeString('pt-BR');
 }
 
-// ─── localStorage helpers ──────────────────────────────────
+// --- localStorage helpers ---
 function lsGet(k){
   try{return JSON.parse(localStorage.getItem(k)||'null');}catch(e){return null;}
 }
@@ -69,19 +80,168 @@ function lsSet(k,v){
   try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}
 }
 
-// ─── STATUS / RESPOSTAS no localStorage ────────────────────
-function carregarStatus(){STATUS=lsGet(LS_STATUS)||{};}
-function salvarStatus(){lsSet(LS_STATUS,STATUS);}
+// --- Fila de salvamento offline ---
+function getFilaSave(){return lsGet(LS_FILA_SAVE)||[];}
+function setFilaSave(f){lsSet(LS_FILA_SAVE,f);}
+function addFilaSave(pacote){
+  var f=getFilaSave();
+  f.push(pacote);
+  setFilaSave(f);
+  updFila();
+}
+var ENVIANDO_FILA = false;
+async function processarFila(){
+  if(ENVIANDO_FILA || !navigator.onLine) return;
+  var fila = getFilaSave();
+  if(!fila.length) return;
 
-function getRespostas(){return lsGet(LS_RESPOSTAS)||[];}
-function setRespostas(r){lsSet(LS_RESPOSTAS,r);}
-function addResposta(linha){
-  var r=getRespostas();
-  r.push(linha);
-  setRespostas(r);
+  ENVIANDO_FILA = true;
+  toast('⏳ Enviando fila offline (' + fila.length + ')...');
+  try {
+    await callGas('salvarRegistrosEmLote', {}, 'POST', fila);
+    setFilaSave([]); // Limpa a fila após sucesso
+    toast('✅ Fila enviada com sucesso!');
+    updFila();
+    // Recarrega os dados para refletir as novas avaliações
+    carregar(document.getElementById('u').value.trim());
+  } catch (error) {
+    toast('❌ Erro ao enviar fila: ' + error.message, 5000);
+  } finally {
+    ENVIANDO_FILA = false;
+  }
+}
+function updFila(){
+  var f=getFilaSave(),el=document.getElementById('sfila');
+  if(f.length>0){el.style.display='inline-flex';el.textContent='⏳ Fila: '+f.length;}
+  else el.style.display='none';
+}
+// Processa a fila a cada 30 segundos se online
+setInterval(function(){if(navigator.onLine)processarFila();},30000);
+
+
+// --- Cache de dados da base e status ---
+function salvarCacheDados(dados, status, unidadesUnicas){
+  lsSet(LS_CACHE_DB, dados);
+  lsSet(LS_CACHE_ST, status);
+  lsSet('vfx_cache_unidades_v9', unidadesUnicas); // Salva unidades únicas também
+}
+function carregarCacheDados(){
+  var db = lsGet(LS_CACHE_DB);
+  var st = lsGet(LS_CACHE_ST);
+  var uu = lsGet('vfx_cache_unidades_v9');
+  if(db && st && uu) return { dados: db, ultimosStatus: st, unidadesUnicas: uu };
+  return null;
 }
 
-// ─── Reavaliação (6 meses) ─────────────────────────────────
+
+// --- Comunicação com Google Apps Script (API) ---
+async function callGas(action, params = {}, method = 'GET', data = null) {
+  let url = new URL(GAS_WEB_APP_URL);
+  url.searchParams.append('action', action);
+  for (const key in params) {
+    url.searchParams.append(key, params[key]);
+  }
+
+  let options = {
+    method: method,
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  };
+
+  if (method === 'POST' && data) {
+    options.body = JSON.stringify({ action: action, data: data });
+  }
+
+  try {
+    const response = await fetch(url.toString(), options);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const result = await response.json();
+    if (result.status === "success" && result.data) { // GAS retorna {status: "success", data: ...}
+      if (result.data.erro) { // Se o erro veio do Apps Script
+        throw new Error(result.data.erro);
+      }
+      return result.data;
+    } else if (result.status === "success" && !result.data) { // Sucesso sem dados (ex: salvar)
+      return { sucesso: true };
+    } else {
+      throw new Error(result.mensagem || 'Erro desconhecido na resposta do GAS.');
+    }
+  } catch (error) {
+    console.error('Erro na comunicação com GAS:', error);
+    throw error;
+  }
+}
+
+// --- Comunicação com SheetDB.io (API) ---
+async function callSheetDB() {
+  try {
+    const response = await fetch(SHEETDB_API_URL);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const data = await response.json();
+
+    // Transforma o JSON do SheetDB (array de objetos) para o formato de array de arrays
+    // e adiciona o cabeçalho como primeira linha.
+    if (!data || data.length === 0) return { dados: [], unidadesUnicas: [] };
+
+    // Cabeçalhos esperados pelo sistema (DI)
+    const expectedHeaders = [
+      'Ordem','Unidade','UniNorm','Bloco','Pavimento','AmbTag',
+      'NomeAmb','Verificação','Aval','Adeq','Inad','Pend','Obs','UID'
+    ];
+    const transformedData = [expectedHeaders]; // Primeira linha é o cabeçalho
+
+    const unidadesUnicas = new Set();
+
+    data.forEach(row => {
+      // Ajuste para 'Nome Ambiente' e 'TAG' do SheetDB
+      const unidadeOriginal = row['Unidade'] || '';
+      const bloco = row['Bloco'] || '';
+      const pavimento = row['Pavimento'] || '';
+      const subambiente = row['Nome Ambiente'] || ''; // Coluna 'Nome Ambiente' do SheetDB
+      const verificacao = row['Verificação'] || '';
+
+      const uCanon = canonical_(unidadeOriginal);
+      const uNorm = nrm(unidadeOriginal); // Usar nrm para UniNorm
+      const uid = [uNorm, nrm(bloco), nrm(pavimento), nrm(subambiente), nrm(verificacao)].join('||').substring(0, 200);
+
+      // Mapeamento de colunas do SheetDB para o formato interno (DI)
+      const mappedRow = [];
+      mappedRow[DI.ORD] = row['Ordem'];
+      mappedRow[DI.UNI] = unidadeOriginal;
+      mappedRow[DI.UNINORM] = uNorm; // Calculado
+      mappedRow[DI.BLC] = bloco;
+      mappedRow[DI.PAV] = pavimento;
+      mappedRow[DI.AMB_TAG] = row['TAG']; // Coluna 'TAG' do SheetDB
+      mappedRow[DI.SUB] = subambiente; // Coluna 'Nome Ambiente' do SheetDB
+      mappedRow[DI.DESC] = verificacao;
+      mappedRow[DI.AVAL] = row['Local avaliado?'];
+      mappedRow[DI.ADEQ] = row['Adequado'];
+      mappedRow[DI.INAD] = row['Inadequado'];
+      mappedRow[DI.PEND] = row['Descrição Pendência'];
+      mappedRow[DI.OBS] = row['Observações/Pontos de atenção'];
+      mappedRow[DI.UID] = uid; // Calculado
+
+      transformedData.push(mappedRow);
+      unidadesUnicas.add(uCanon);
+    });
+
+    return {
+      dados: transformedData,
+      unidadesUnicas: Array.from(unidadesUnicas).sort()
+    };
+
+  } catch (error) {
+    console.error('Erro na comunicação com SheetDB:', error);
+    throw error;
+  }
+}
+
+// --- Reavaliação (6 meses) ---
 function precisaReaval(uid){
   var st=STATUS[uid];
   if(!st||!st.dataUltimaAval||st.status.toUpperCase()!=='OK')return false;
@@ -96,7 +256,7 @@ function mesesDesde(uid){
   return Math.floor((new Date()-dt)/(1000*60*60*24*30.44));
 }
 
-// ─── Ciclos de unidade ─────────────────────────────────────
+// --- Ciclos de unidade ---
 function cicloInfo(nome,totalSubs){
   var c=CICLOS[nrm(nome)];
   if(!c||totalSubs===0)return{
@@ -109,7 +269,7 @@ function cicloInfo(nome,totalSubs){
   return{media:(totalSubs/6).toFixed(1),sub:ini+'–'+fim+' · fora do ciclo'};
 }
 
-// ─── Resolver status de item ───────────────────────────────
+// --- Resolver status de item ---
 function resStatus(item){
   var uid=item[DI.UID];
   if(_rsCache[uid]!==undefined)return _rsCache[uid];
@@ -124,7 +284,7 @@ function _calcStatus(item){
   var s=SEL.find(function(x){return x.uid===uid;});
   if(s&&s.v&&s.v.trim()!=='')return s.v;
 
-  // 2. STATUS salvo
+  // 2. STATUS carregado do GAS
   if(STATUS[uid]&&STATUS[uid].status){
     var rc=STATUS[uid].status.trim().toUpperCase();
     if(rc==='OK')         return 'Ok';
@@ -133,7 +293,7 @@ function _calcStatus(item){
     if(rc!=='')           return 'Ok';
   }
 
-  // 3. BASE DE DADOS
+  // 3. BASE DE DADOS (valores iniciais)
   var colK=nrm(item[DI.INAD]);
   if(colK==='verdadeiro'||colK==='true')return'Inadequado';
   var colJ=nrm(item[DI.ADEQ]);
@@ -142,40 +302,96 @@ function _calcStatus(item){
   if(colI==='n/a'||colI==='nao_aplicavel'||colI==='nao aplicavel'||
      colI==='não aplicável'||colI==='na')return'N/A';
 
-  // regra: AVAL="não" ou "sim" sem adequação/inadequação => não avaliado
   return 'Nao Avaliado';
 }
 
-// ─── Carregar base (data.js) ───────────────────────────────
-function carregar(u){
+// --- Carregar dados (SheetDB para base, GAS para status) ---
+async function carregar(u){
   if(u===undefined)u=document.getElementById('u').value.trim();
   invCache();invRsCache();
-  carregarStatus();
-  DB=window.BASE_DE_DADOS||[]; // Carrega do data.js
-  popularFiltros();
-  renderLista();
-  updContadores();
-  if(u)carregarHist(u);
-  var num=DB.length>1?(DB.length-1):0;
-  toast('✅ '+num+' itens carregados');
+
+  let cachedData = carregarCacheDados();
+  if (cachedData && navigator.onLine) { // Se tem cache e está online, usa cache e tenta atualizar em background
+    DB = cachedData.dados;
+    STATUS = cachedData.ultimosStatus;
+    toast('📦 Usando cache local. Verificando atualizações...');
+    popularFiltros(cachedData.unidadesUnicas);
+    renderLista();
+    updContadores();
+    if(u)carregarHist(u);
+
+    // Tenta buscar dados mais recentes em background
+    try {
+      const sheetdbResult = await callSheetDB();
+      const gasStatusResult = await callGas('obterTodosUltimosStatus');
+
+      // Compara se os dados ou status mudaram
+      if (JSON.stringify(sheetdbResult.dados) !== JSON.stringify(DB) || JSON.stringify(gasStatusResult) !== JSON.stringify(STATUS)) {
+        DB = sheetdbResult.dados;
+        STATUS = gasStatusResult || {};
+        salvarCacheDados(DB, STATUS, sheetdbResult.unidadesUnicas);
+        toast('✅ Dados atualizados do servidor!');
+        popularFiltros(sheetdbResult.unidadesUnicas);
+        renderLista();
+        updContadores();
+        if(u)carregarHist(u);
+      } else {
+        toast('✅ Cache atualizado.');
+      }
+    } catch (error) {
+      toast('⚠️ Erro ao atualizar dados do servidor. Usando cache.', 5000);
+    }
+  } else if (cachedData && !navigator.onLine) { // Offline e com cache
+    DB = cachedData.dados;
+    STATUS = cachedData.ultimosStatus;
+    toast('🔴 Offline. Usando cache local.', 5000);
+    popularFiltros(cachedData.unidadesUnicas);
+    renderLista();
+    updContadores();
+    if(u)carregarHist(u);
+  } else { // Sem cache ou offline sem cache
+    toast('⏳ Carregando dados do servidor...');
+    try {
+      const sheetdbResult = await callSheetDB();
+      const gasStatusResult = await callGas('obterTodosUltimosStatus');
+
+      DB = sheetdbResult.dados;
+      STATUS = gasStatusResult || {};
+      salvarCacheDados(DB, STATUS, sheetdbResult.unidadesUnicas);
+      toast('✅ Dados carregados do servidor!');
+      popularFiltros(sheetdbResult.unidadesUnicas);
+      renderLista();
+      updContadores();
+      if(u)carregarHist(u);
+    } catch (error) {
+      toast('❌ Erro ao carregar dados: ' + error.message + '. Sem cache.', 5000);
+      DB = []; STATUS = {};
+      popularFiltros([]);
+      renderLista();
+      updContadores();
+    }
+  }
 }
 
-// ─── Filtros / datalists ───────────────────────────────────
-function popularFiltros(){
+// --- Filtros / datalists ---
+function popularFiltros(unidadesUnicasFromSource = []){
   var ul=document.getElementById('lu'),bl=document.getElementById('lb');
   var pl=document.getElementById('lpav'),sl=document.getElementById('lsub');
   ul.innerHTML='';bl.innerHTML='';pl.innerHTML='';sl.innerHTML='';
 
   var uMap={},bSet={},pSet={},sSet={};
+
+  unidadesUnicasFromSource.sort().forEach(function(uCanon){
+    uMap[nrmU(uCanon)] = uCanon;
+    ul.innerHTML+='<option value="'+esc(uCanon)+'">';
+  });
+
   DB.slice(1).forEach(function(row){
-    var ru=(row[DI.UNI]||'').trim();
-    if(ru){var k=nrmU(ru);if(!uMap[k]||ru>uMap[k])uMap[k]=ru;}
     var b=(row[DI.BLC]||'').trim();if(b)bSet[b]=1;
     var p=(row[DI.PAV]||'').trim();if(p)pSet[p]=1;
     var s=(row[DI.SUB]||'').trim();if(s)sSet[s]=1;
   });
 
-  Object.keys(uMap).sort().forEach(function(k){ul.innerHTML+='<option value="'+esc(uMap[k])+'">';});
   Object.keys(bSet).sort().forEach(function(v){bl.innerHTML+='<option value="'+esc(v)+'">';});
   Object.keys(pSet).sort().forEach(function(v){pl.innerHTML+='<option value="'+esc(v)+'">';});
   Object.keys(sSet).sort().forEach(function(v){sl.innerHTML+='<option value="'+esc(v)+'">';});
@@ -206,7 +422,7 @@ function savFilt(){
   ['resp','u','b','pav','sub'].forEach(mkpre);
 }
 
-// ─── Itens filtrados ───────────────────────────────────────
+// --- Itens filtrados ---
 var _ci=null,_cc='';
 function invCache(){_ci=null;_cc='';}
 function getItens(){
@@ -228,7 +444,7 @@ function getItens(){
   return _ci;
 }
 
-// ─── Filtros rápidos (cards superiores) ─────────────────────
+// --- Filtros rápidos (cards superiores) ---
 var _dt=null;
 function updCDebounced(){clearTimeout(_dt);_dt=setTimeout(updContadores,80);}
 
@@ -245,7 +461,7 @@ function filtroNA(){
   window.scrollTo({top:document.getElementById('lista').offsetTop-20,behavior:'smooth'});
 }
 
-// ─── Marcar status de um item ──────────────────────────────
+// --- Marcar status de um item ---
 function marcar(uid,v,uni,bl,pav,amb,desc,tipo){
   delete _rsCache[uid];
   var s=SEL.find(function(x){return x.uid===uid;});
@@ -277,7 +493,7 @@ function marcar(uid,v,uni,bl,pav,amb,desc,tipo){
   }
 }
 
-// ─── Helpers HTML de card/foto ─────────────────────────────
+// --- Helpers HTML de card/foto ---
 function thumbH(uid,i,src){
   var ua=(uid===null||uid==='')?'':' data-uid="'+esc(uid)+'"';
   return '<div class="thumb"><img src="'+esc(src)+'" alt="Foto '+i+'">'+
@@ -362,7 +578,7 @@ function cardH(item,idx){
   '</div>';
 }
 
-// ─── Render lista principal ────────────────────────────────
+// --- Render lista principal ---
 function renderLista(){
   var lista=document.getElementById('lista');
   var u=document.getElementById('u').value.trim();
@@ -492,7 +708,7 @@ function renderLista(){
           const ex = d.itens.find(it => statusCache[it[DI.UID]] === 'Ok') || d.itens[0];
           const dn = (d.bloco ? d.bloco + ' - ' : '') + (d.pav ? d.pav + ' - ' : '') + d.sub;
           const venc = d.itens.filter(it => statusCache[it[DI.UID]] === 'Ok' && precisaReaval(it[DI.UID])).length;
-          const vB = venc > 0 ? `<span style="background:#fef3c7;color:#92400e;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;margin-left:6px;">🔄 ${venc} venc.</span>` : '';
+          const vB = venc > 0 ? `<span style="background:#fef3e0;color:#92400e;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;margin-left:6px;">🔄 ${venc} venc.</span>` : '';
           parts.push(
             `<div class="cokl" data-uni="${esc(ex[DI.UNI])}" data-bl="${esc(d.bloco)}" data-pav="${esc(d.pav)}" data-sub="${esc(d.sub)}" data-filt="AVALIADOS_OK">` +
               `<div><div style="font-weight:700;font-size:16px;color:var(--success);display:flex;align-items:center;flex-wrap:wrap;gap:4px;">${esc(dn)}${vB}</div>` +
@@ -533,7 +749,7 @@ function renderLista(){
   renderGalerias();
 }
 
-// ─── Limpar filtros secundários ────────────────────────────
+// --- Limpar filtros secundários ---
 function limparSecundarios(){
   document.getElementById('b').value='';
   document.getElementById('pav').value='';
@@ -541,8 +757,8 @@ function limparSecundarios(){
   savFilt();invCache();invRsCache();renderLista();updCDebounced();
 }
 
-// ─── Contadores / progresso ────────────────────────────────
-function updPG(){
+// --- Contadores / progresso ---
+async function updPG(){
   var u=document.getElementById('u').value.trim();
   var cp=document.getElementById('cpg');
   if(!u){cp.style.display='none';return;}
@@ -578,7 +794,7 @@ function updPBar(){
   }
 }
 
-function updContadores(){
+async function updContadores(){
   var u=document.getElementById('u').value.trim();
   if(!u){zerarC();return;}
   var itens=getItens();
@@ -628,7 +844,7 @@ function zerarC(){
   document.getElementById('cpg').style.display='none';
 }
 
-// ─── Fotos (base64, apenas local) ──────────────────────────
+// --- Fotos (base64, apenas local na sessão) ---
 function handleFotos(e){
   var files=e.target.files;if(!files.length)return;
   var ps=[];
@@ -678,8 +894,8 @@ function renderGalerias(){
   SEL.forEach(function(sl){if(sl.fotos&&sl.fotos.length>0)renderGal(sl.uid,sl.fotos);});
 }
 
-// ─── Salvar avaliações (local) ─────────────────────────────
-function tentarSalvar(){
+// --- Salvar avaliações (via GAS com fila offline) ---
+async function tentarSalvar(){
   var resp=document.getElementById('resp').value.trim();
   var u=document.getElementById('u').value.trim();
   var b=document.getElementById('b').value.trim();
@@ -688,160 +904,98 @@ function tentarSalvar(){
   var its=SEL.filter(function(s){return s.v||s.obs||s.fotos.length>0||(s.achados&&s.achados.length>0);});
   if(!its.length&&!FSUB.length){toast('Nenhuma avaliação para salvar.',3000);return;}
 
-  var agora=new Date();
-  var dataFmt=fmtDataHora(agora);
-  var dataDia=hojeStr();
+  var pacote={
+    r:resp, u:u, b:b, sub:sub,
+    fotosSubambiente:FSUB.map(function(f){return f.b64;}),
+    itens:its.map(function(s){
+      return {
+        pav:s.pav,
+        amb:s.amb,
+        p:s.p,
+        v:s.v,
+        obs:s.obs,
+        fotos:s.fotos.map(function(f){return f.b64;}),
+        tipo:s.tipo,
+        achados:(s.achados||[]).join(', ')
+      };
+    })
+  };
 
-  its.forEach(function(s){
-    var linha=[
-      dataFmt,
-      resp,
-      u,
-      b,
-      sub||s.amb, // Usa o subambiente do filtro se houver, senão o do item
-      FSUB.length?'(Fotos sub local)': '', // Indica se há fotos de subambiente
-      s.pav||'',
-      s.amb||'',
-      s.p||'',
-      s.v||'',
-      s.obs||'',
-      s.fotos.length?'(Fotos item local)':'', // Indica se há fotos de item
-      s.tipo||'',
-      (s.achados||[]).join(', ')
-    ];
-    addResposta(linha);
+  var btn=document.getElementById('bsave');
+  btn.textContent='💾 SALVANDO...';btn.disabled=true;
 
-    // Atualiza STATUS (último status do item)
-    STATUS[s.uid]={
-      status:(s.v||'').toUpperCase()||'',
-      obs:s.obs||'',
-      achados:(s.achados||[]).join(', '),
-      dataUltimaAval:dataDia
-    };
-  });
+  if(!navigator.onLine){
+    addFilaSave(pacote);
+    toast('🔴 OFFLINE. Salvo na fila para enviar depois.');
+    SEL=[];FSUB=[];invRsCache();carregar(document.getElementById('u').value.trim());
+    btn.textContent='💾 SALVAR AVALIAÇÕES';btn.disabled=false;
+    return;
+  }
 
-  salvarStatus();
-  toast('✅ Avaliações salvas localmente!');
-  SEL=[];FSUB=[];invRsCache();carregar(document.getElementById('u').value.trim());
+  try {
+    // Envia o pacote atual e tenta processar a fila se houver
+    const fila = getFilaSave();
+    if (fila.length > 0) {
+      fila.push(pacote); // Adiciona o pacote atual à fila existente
+      await callGas('salvarRegistrosEmLote', {}, 'POST', fila);
+      setFilaSave([]); // Limpa a fila
+      toast('✅ Avaliações (e fila) salvas com sucesso!');
+    } else {
+      await callGas('salvarRegistrosEmLote', {}, 'POST', [pacote]); // Envia apenas o pacote atual
+      toast('✅ Avaliações salvas com sucesso!');
+    }
+
+    SEL=[];FSUB=[];invRsCache();carregar(document.getElementById('u').value.trim());
+  } catch (error) {
+    addFilaSave(pacote); // Adiciona à fila se falhar
+    toast('❌ Erro ao salvar: ' + error.message + '. Adicionado à fila offline.', 5000);
+  } finally {
+    btn.textContent='💾 SALVAR AVALIAÇÕES';btn.disabled=false;
+    updFila();
+  }
 }
 
-// ─── CSV do dia (a partir das respostas locais) ────────────
-function baixarRelatorio(){
-  var dados=getRespostas();
-  if(!dados.length){toast('Nenhum dado salvo ainda.',3000);return;}
-  var hoje=hojeStr();
-  var header=['Data','Inspetor','Unidade','Bloco','Subambiente','Fotos Sub','Pavimento','Ambiente Item','Item','Status','Observação','Fotos Item','Tipo','Achados'];
-  var linhas=dados.filter(function(l){return String(l[0]).indexOf(hoje)===0;});
-  if(!linhas.length){toast('Nenhum registro para hoje.',3000);return;}
-  var all=[header].concat(linhas);
-  var csv='\uFEFF'+all.map(function(row){
-    return row.map(function(c){
+// --- CSV do dia (via GAS) ---
+async function baixarRelatorio(){
+  toast('⏳ Gerando CSV...');
+  try {
+    const dados = await callGas('obterRespostasDoDia');
+    if(!dados||!dados.length){toast('Nenhum dado hoje.',3000);return;}
+    var csv='\uFEFF'+dados.map(function(row){return row.map(function(c){
       var v=(c===null||c===undefined)?'':String(c);
       return '"'+v.replace(/"/g,'""')+'"';
-    }).join(',');
-  }).join('\r\n');
-
-  var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
-  var url=URL.createObjectURL(blob);
-  var a=document.createElement('a');
-  a.href=url;
-  a.download='relatorio_'+hoje.replace(/\//g,'-')+'.csv';
-  a.style.display='none';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  toast('✅ CSV baixado!');
+    }).join(',');}).join('\r\n');
+    var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=url;a.download='relatorio_'+new Date().toLocaleDateString('pt-BR').replace(/\//g,'-')+'.csv';
+    a.style.display='none';document.body.appendChild(a);a.click();
+    document.body.removeChild(a);URL.revokeObjectURL(url);
+    toast('✅ CSV baixado!');
+  } catch (error) {
+    toast('❌ Erro ao baixar CSV: ' + error.message, 5000);
+  }
 }
 
-// ─── Histórico (6 meses) — agora baseado em RESPOSTAS locais ────
-function obterHistorico6Meses(unidadeFiltro){
-  var MESES=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-  var hoje=new Date();
-  var uCanon=nrm(unidadeFiltro);
-
-  var mesesRef=[];
-  for(var i=5;i>=0;i--){
-    var d=new Date(hoje.getFullYear(),hoje.getMonth()-i,1);
-    mesesRef.push({
-      ano:d.getFullYear(),mes:d.getMonth()+1,
-      label:MESES[d.getMonth()]+'/'+String(d.getFullYear()).slice(2),
-      subambientes:0,ok:0,inadequados:0,na:0,chaves:{},primeiroRegistro:null
-    });
+// --- Histórico (via GAS) ---
+async function obterHistorico6Meses(unidadeFiltro){
+  try {
+    const result = await callGas('obterHistorico6Meses', { unidade: unidadeFiltro });
+    return result;
+  } catch (error) {
+    console.error('Erro ao obter histórico:', error);
+    return {
+      meses: [], totalSubambientes: 0, totalVisitados: 0, totalInadequados: 0, percentualCobertura: 0
+    };
   }
-
-  var dados=getRespostas();
-  var dataMin=new Date(hoje.getFullYear(),hoje.getMonth()-5,1);
-  var subsUnicos={},totalReg=0,totalInad=0;
-
-  dados.forEach(function(l){
-    var unidadeResposta=(l[2]||'').trim();
-    if(!unidadeResposta||nrm(unidadeResposta)!==uCanon)return;
-
-    var sub=(l[4]||'').trim();
-    if(!sub||sub==='(Registro de ambiente)')return;
-
-    var ds=(l[0]||'').trim();if(!ds)return;
-    var pp=ds.split(' ');
-    var pd=pp[0].split('/');
-    var ph=(pp[1]||'00:00:00').split(':');
-    var dt=new Date(+pd[2],+pd[1]-1,+pd[0],+ph[0],+ph[1],+ph[2]);
-    if(isNaN(dt.getTime())||dt<dataMin)return;
-
-    var bloco=(l[3]||'').trim();
-    var pav  =(l[6]||'').trim();
-    var chave=bloco+'|'+pav+'|'+sub;
-    var st=(l[9]||'').trim().toUpperCase();
-
-    var mo=null;
-    for(var j=0;j<mesesRef.length;j++){
-      if(mesesRef[j].mes===dt.getMonth()+1&&mesesRef[j].ano===dt.getFullYear()){mo=mesesRef[j];break;}
-    }
-    if(!mo)return;
-
-    if(!mo.chaves[chave]){
-      mo.chaves[chave]=1;mo.subambientes++;
-      if(!mo.primeiroRegistro)mo.primeiroRegistro={bloco:bloco,pavimento:pav,subambiente:sub};
-    }
-    if(st==='OK')mo.ok++;
-    else if(st==='INADEQUADO'){mo.inadequados++;totalInad++;}
-    else if(st==='N/A')mo.na++;
-    totalReg++;subsUnicos[chave]=1;
-  });
-
-  var subsCount=Object.keys(subsUnicos).length;
-
-  // totalBase (quantos subambientes existem na base para essa unidade)
-  var totalBase=0;
-  if(DB.length>1){
-    var s={};
-    for(var i=1;i<DB.length;i++){
-      var unidadeBase=(DB[i][1]||'').trim();
-      if(!unidadeBase||nrm(unidadeBase)!==uCanon)continue;
-      var sub2=(DB[i][6]||'').trim();if(!sub2)continue;
-      s[(DB[i][3]||'').trim()+'|'+(DB[i][4]||'').trim()+'|'+sub2]=1;
-    }
-    totalBase=Object.keys(s).length;
-  }
-
-  return {
-    meses:mesesRef.map(function(m){return{
-      mes:m.mes,ano:m.ano,label:m.label,
-      subambientes:m.subambientes,ok:m.ok,inadequados:m.inadequados,na:m.na,
-      primeiroRegistro:m.primeiroRegistro
-    };}),
-    totalSubambientes:subsCount,
-    totalVisitados:totalReg,
-    totalInadequados:totalInad,
-    percentualCobertura: totalBase>0 ? Math.min(100,Math.round((subsCount/totalBase)*100)) : 0
-  };
 }
 
-function carregarHist(unidade){
+async function carregarHist(unidade){
   var card=document.getElementById('chist'),cont=document.getElementById('hcont');
   card.style.display='block';
-  cont.innerHTML='<div class="hload">Carregando histórico...</div>';
-  var d=obterHistorico6Meses(unidade);
+  cont.innerHTML='<div class="hload">⏳ Carregando histórico...</div>';
+  const d = await obterHistorico6Meses(unidade);
+  if(!d||!d.meses||!d.meses.length){cont.innerHTML='<div class="hload">Nenhum registro nos últimos 6 meses.</div>';return;}
   cont.innerHTML=buildHist(d,unidade);
 }
 
@@ -852,8 +1006,8 @@ function buildHist(d,unidade){
     var ini=ME[ciclo.i-1],fim=ME[ciclo.f-1];
     var mes=hoje.getMonth()+1,dentro=mes>=ciclo.i&&mes<=ciclo.f;
     var stC=dentro
-      ?'<span style="color:var(--success);font-weight:700;">✅ Dentro do ciclo ('+MN[ciclo.i-1]+'–'+MN[ciclo.f-1]+')</span>'
-      :'<span style="color:var(--warning);font-weight:700;">⚠️ Fora do período ('+MN[ciclo.i-1]+'–'+MN[ciclo.f-1]+')</span>';
+      ?'<span style="color:var(--success);font-weight:700;">✅ Dentro do ciclo ('+MN[ciclo.i-1]+'–'+MN[c.f-1]+')</span>'
+      :'<span style="color:var(--warning);font-weight:700;">⚠️ Fora do período ('+MN[c.i-1]+'–'+MN[c.f-1]+')</span>';
     regraH='<div class="crcicloh"><b>📋 Regra dos 6 meses:</b> Esta unidade deve ser avaliada entre <b>'+ini+'</b> e <b>'+fim+'</b>.<br>'+stC+'</div>';
   }else{
     regraH='<div class="crcicloh"><b>📋 Regra dos 6 meses:</b> Todos os itens devem ser reavaliados a cada <b>6 meses</b>.</div>';
@@ -891,7 +1045,7 @@ function buildHist(d,unidade){
   return regraH+grid+bar+resumo;
 }
 
-// ─── Voz (SpeechRecognition do navegador) ──────────────────
+// --- Voz (SpeechRecognition do navegador) ---
 var SAPI=window.SpeechRecognition||window.webkitSpeechRecognition||null;
 var micUid=null,recObj=null;
 function iniciarVoz(uid){
@@ -917,7 +1071,7 @@ function pararVoz(){
   micUid=null;
 }
 
-// ─── Eventos de UI ─────────────────────────────────────────
+// --- Eventos de UI ---
 function onClick(e){
   e.preventDefault(); // <--- ADICIONADO: Impede o comportamento padrão (scroll, etc.)
 
@@ -982,7 +1136,7 @@ function toggleAch(uid,ach){
   });
 }
 
-// ─── Navegar para subambiente (quando clica em bloco resumo) ─────
+// --- Navegar para subambiente (quando clica em bloco resumo) ---
 function irParaSub(uni,bl,pav,sub,st){
   document.getElementById('u').value=uni;
   document.getElementById('b').value=bl;
@@ -994,27 +1148,25 @@ function irParaSub(uni,bl,pav,sub,st){
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
-// ─── Ambientes verificados hoje ───────────────────────────
-function obterAmbientesVerificadosHoje(){
-  var hoje=hojeStr();
-  var dados=getRespostas();
-  var s={};
-  dados.forEach(function(l){
-    if(String(l[0]).indexOf(hoje)!==0)return;
-    var sub=(l[4]||'').trim();
-    if(!sub||sub==='(Registro de ambiente)')return;
-    s[(l[2]||'')+'|'+(l[3]||'')+'|'+sub]=1;
-  });
-  return Object.keys(s).length;
+// --- Ambientes verificados hoje (via GAS) ---
+async function obterAmbientesVerificadosHoje(){
+  try {
+    const result = await callGas('obterAmbientesVerificadosHoje');
+    return result;
+  } catch (error) {
+    console.error('Erro ao obter ambientes verificados hoje:', error);
+    return 0;
+  }
 }
-function updHoje(){
-  var n=obterAmbientesVerificadosHoje();
+async function updHoje(){
+  const n = await obterAmbientesVerificadosHoje();
   var el=document.getElementById('chj');if(el)el.textContent=n;
 }
 
-// ─── Init ──────────────────────────────────────────────────
+// --- Init ---
 document.addEventListener('DOMContentLoaded',function(){
-  document.getElementById('snet').textContent='💻 LOCAL';
+  document.getElementById('snet').textContent='🌐 ONLINE'; // Indica que está online com GAS
+  updFila(); // Atualiza o contador da fila ao carregar
   document.addEventListener('click',onClick);
   document.addEventListener('change',function(e){
     var ta=e.target;
