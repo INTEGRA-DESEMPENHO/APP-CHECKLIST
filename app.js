@@ -1,14 +1,14 @@
-// app.js — Frontend para Vistoria Fênix v9 (OTIMIZADO)
+// app.js — Frontend para Vistoria Fênix v9 (OTIMIZADO E CORRIGIDO)
 // Comunica-se com SheetDB.io para leitura da BASE DE DADOS e Google Apps Script para escrita/status.
 
 // --- CONFIGURAÇÃO ---
 // COLOQUE A URL DO SEU GOOGLE APPS SCRIPT AQUI!
 // Ex: 'https://script.google.com/macros/s/AKfycb.../exec'
-const GAS_WEB_APP_URL = 'SEU_GAS_WEB_APP_URL_AQUI'; // <-- SUBSTITUA AQUI!
+const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyVtmObD9MpYlIAc1Z8sWsnA0XWKTvBcmEDFEk9ay2NTSYALDLGwOo1Q59Hyyk6DxXd/exec'; // <-- SUBSTITUA AQUI PELA URL DO SEU APPS SCRIPT!
 
 // COLOQUE A URL DA SUA API SHEETDB.IO AQUI!
 // Ex: 'https://sheetdb.io/api/v1/p5kdwbijb335u'
-const SHEETDB_API_URL = 'https://sheetdb.io/api/v1/p5kdwbijb335u'; // <-- SUBSTITUA AQUI!
+const SHEETDB_API_URL = https://sheetdb.io/api/v1/p5kdwbijb335u'; // <-- SUBSTITUA AQUI PELA URL DA SUA API SHEETDB.IO!
 
 // --- Chaves no localStorage ---
 var LS_FILTROS   = 'vfx_filt_v9';
@@ -205,7 +205,7 @@ async function callSheetDB() {
       const subambiente = row['Nome Ambiente'] || ''; // Coluna 'Nome Ambiente' do SheetDB
       const verificacao = row['Verificação'] || '';
 
-      const uCanon = canonical_(unidadeOriginal);
+      const uCanon = nrm(unidadeOriginal); // Usar nrm para canonical
       const uNorm = nrm(unidadeOriginal); // Usar nrm para UniNorm
       const uid = [uNorm, nrm(bloco), nrm(pavimento), nrm(subambiente), nrm(verificacao)].join('||').substring(0, 200);
 
@@ -219,11 +219,11 @@ async function callSheetDB() {
       mappedRow[DI.AMB_TAG] = row['TAG']; // Coluna 'TAG' do SheetDB
       mappedRow[DI.SUB] = subambiente; // Coluna 'Nome Ambiente' do SheetDB
       mappedRow[DI.DESC] = verificacao;
-      mappedRow[DI.AVAL] = row['Local avaliado?'];
-      mappedRow[DI.ADEQ] = row['Adequado'];
-      mappedRow[DI.INAD] = row['Inadequado'];
-      mappedRow[DI.PEND] = row['Descrição Pendência'];
-      mappedRow[DI.OBS] = row['Observações/Pontos de atenção'];
+      mappedRow[DI.AVAL] = row['Local avaliado?']; // Coluna 'Local avaliado?' do SheetDB
+      mappedRow[DI.ADEQ] = row['Adequado']; // Coluna 'Adequado' do SheetDB
+      mappedRow[DI.INAD] = row['Inadequado']; // Coluna 'Inadequado' do SheetDB
+      mappedRow[DI.PEND] = row['Descrição Pendência']; // Coluna 'Descrição Pendência' do SheetDB
+      mappedRow[DI.OBS] = row['Observações/Pontos de atenção']; // Coluna 'Observações/Pontos de atenção' do SheetDB
       mappedRow[DI.UID] = uid; // Calculado
 
       transformedData.push(mappedRow);
@@ -311,59 +311,60 @@ async function carregar(u){
   invCache();invRsCache();
 
   let cachedData = carregarCacheDados();
-  if (cachedData && navigator.onLine) { // Se tem cache e está online, usa cache e tenta atualizar em background
-    DB = cachedData.dados;
-    STATUS = cachedData.ultimosStatus;
-    toast('📦 Usando cache local. Verificando atualizações...');
-    popularFiltros(cachedData.unidadesUnicas);
-    renderLista();
-    updContadores();
-    if(u)carregarHist(u);
+  let bcacheEl = document.getElementById('bcache');
 
-    // Tenta buscar dados mais recentes em background
-    try {
-      const sheetdbResult = await callSheetDB();
-      const gasStatusResult = await callGas('obterTodosUltimosStatus');
-
-      // Compara se os dados ou status mudaram
-      if (JSON.stringify(sheetdbResult.dados) !== JSON.stringify(DB) || JSON.stringify(gasStatusResult) !== JSON.stringify(STATUS)) {
-        DB = sheetdbResult.dados;
-        STATUS = gasStatusResult || {};
-        salvarCacheDados(DB, STATUS, sheetdbResult.unidadesUnicas);
-        toast('✅ Dados atualizados do servidor!');
-        popularFiltros(sheetdbResult.unidadesUnicas);
-        renderLista();
-        updContadores();
-        if(u)carregarHist(u);
-      } else {
-        toast('✅ Cache atualizado.');
-      }
-    } catch (error) {
-      toast('⚠️ Erro ao atualizar dados do servidor. Usando cache.', 5000);
-    }
-  } else if (cachedData && !navigator.onLine) { // Offline e com cache
-    DB = cachedData.dados;
-    STATUS = cachedData.ultimosStatus;
-    toast('🔴 Offline. Usando cache local.', 5000);
-    popularFiltros(cachedData.unidadesUnicas);
-    renderLista();
-    updContadores();
-    if(u)carregarHist(u);
-  } else { // Sem cache ou offline sem cache
-    toast('⏳ Carregando dados do servidor...');
-    try {
-      const sheetdbResult = await callSheetDB();
-      const gasStatusResult = await callGas('obterTodosUltimosStatus');
-
-      DB = sheetdbResult.dados;
-      STATUS = gasStatusResult || {};
-      salvarCacheDados(DB, STATUS, sheetdbResult.unidadesUnicas);
-      toast('✅ Dados carregados do servidor!');
-      popularFiltros(sheetdbResult.unidadesUnicas);
+  if (!navigator.onLine) {
+    if (cachedData) {
+      DB = cachedData.dados;
+      STATUS = cachedData.ultimosStatus;
+      toast('📦 Offline — usando cache local.', 4000);
+      bcacheEl.classList.add('vis');
+      popularFiltros(cachedData.unidadesUnicas);
       renderLista();
       updContadores();
       if(u)carregarHist(u);
-    } catch (error) {
+    } else {
+      toast('🔴 Offline e sem cache. Conecte-se para carregar dados.', 5000);
+      bcacheEl.classList.add('vis');
+      DB = []; STATUS = {};
+      popularFiltros([]);
+      renderLista();
+      updContadores();
+    }
+    return;
+  } else {
+    bcacheEl.classList.remove('vis');
+  }
+
+  // Se online, tenta carregar do servidor
+  toast('⏳ Carregando dados do servidor...');
+  try {
+    const sheetdbResult = await callSheetDB(); // Puxa a base do SheetDB
+    const gasStatusResult = await callGas('obterTodosUltimosStatus'); // Puxa status do GAS
+
+    DB = sheetdbResult.dados;
+    STATUS = gasStatusResult || {}; // Garante que STATUS seja um objeto
+
+    // Salva no cache local
+    salvarCacheDados(DB, STATUS, sheetdbResult.unidadesUnicas);
+
+    toast('✅ Dados carregados do servidor!');
+    popularFiltros(sheetdbResult.unidadesUnicas);
+    renderLista();
+    updContadores();
+    if(u)carregarHist(u);
+  } catch (error) {
+    console.error('Erro ao carregar dados do servidor:', error);
+    if (cachedData) {
+      DB = cachedData.dados;
+      STATUS = cachedData.ultimosStatus;
+      toast('❌ Erro ao carregar do servidor. Usando cache local.', 5000);
+      bcacheEl.classList.add('vis');
+      popularFiltros(cachedData.unidadesUnicas);
+      renderLista();
+      updContadores();
+      if(u)carregarHist(u);
+    } else {
       toast('❌ Erro ao carregar dados: ' + error.message + '. Sem cache.', 5000);
       DB = []; STATUS = {};
       popularFiltros([]);
