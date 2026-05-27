@@ -4,11 +4,11 @@
 // --- CONFIGURAÇÃO ---
 // COLOQUE A URL DO SEU GOOGLE APPS SCRIPT AQUI!
 // Ex: 'https://script.google.com/macros/s/AKfycb.../exec'
-const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyVtmObD9MpYlIAc1Z8sWsnA0XWKTvBcmEDFEk9ay2NTSYALDLGwOo1Q59Hyyk6DxXd/exec'; // <-- SUBSTITUA AQUI PELA URL DO SEU APPS SCRIPT!
+const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbybOSka1lW5bxjBrjIIRyOXTjAjDAx0SUpOUY79u_d8NIzIBvu786K_zYYMQzgztTbw/exec'; // <-- SUBSTITUA AQUI PELA URL DO SEU APPS SCRIPT!
 
 // COLOQUE A URL DA SUA API SHEETDB.IO AQUI!
 // Ex: 'https://sheetdb.io/api/v1/p5kdwbijb335u'
-const SHEETDB_API_URL = https://sheetdb.io/api/v1/p5kdwbijb335u'; // <-- SUBSTITUA AQUI PELA URL DA SUA API SHEETDB.IO!
+const SHEETDB_API_URL = 'https://sheetdb.io/api/v1/p5kdwbijb335u'; // <-- SUBSTITUA AQUI PELA URL DA SUA API SHEETDB.IO!
 
 // --- Chaves no localStorage ---
 var LS_FILTROS   = 'vfx_filt_v9';
