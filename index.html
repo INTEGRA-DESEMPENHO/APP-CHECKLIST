@@ -15,7 +15,8 @@
     <div class="topbar">
       <div class="apptitle">Vistoria Fênix <span>v9</span></div>
       <div class="sg">
-        <div id="snet" class="snet online">💻 LOCAL</div>
+        <div id="snet" class="snet online">🌐 ONLINE</div>
+        <div id="sfila" class="sfila">⏳ Fila: 0</div>
         <button class="bcsv" onclick="baixarRelatorio()">📥 CSV HOJE</button>
       </div>
     </div>
@@ -56,6 +57,10 @@
       </div>
     </div>
     <button class="bclear" onclick="limparSecundarios()">Limpar Filtros (Bloco, Pav., Sub.)</button>
+  </div>
+
+  <div id="bcache" class="bcache">
+    📦 <strong>Modo offline</strong> — exibindo dados do cache local. Salve quando voltar online.
   </div>
 
   <div class="dash">
@@ -116,7 +121,6 @@
 </div>
 <input type="file" id="camInput" accept="image/*" capture="environment" multiple style="display:none">
 
-<script src="data.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
