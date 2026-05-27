@@ -226,7 +226,6 @@
          padding:16px;margin-bottom:12px;border-radius:16px;display:flex;
          justify-content:space-between;align-items:center;cursor:pointer;transition:.2s;box-shadow:var(--s1)}
     .cig:hover{background:#ffebeb;transform:translateY(-2px)}
-    .cng{background:#f9fafb;border:1px solid #9ca3af;border
     .cng{background:#f9fafb;border:1px solid #9ca3af;border-left:8px solid var(--na);
          padding:16px;margin-bottom:12px;border-radius:16px;display:flex;
          justify-content:space-between;align-items:center;cursor:pointer;transition:.2s;box-shadow:var(--s1)}
@@ -246,6 +245,32 @@
             padding:10px 16px;margin-bottom:16px;font-size:12px;color:#92400e;
             display:none;align-items:center;gap:8px}
     .bcache.vis{display:flex}
+
+    /* Config modal */
+    .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:500;
+                   display:flex;align-items:center;justify-content:center;padding:20px}
+    .modal-box{background:#fff;border-radius:24px;padding:28px;max-width:500px;width:100%;
+               box-shadow:0 20px 60px rgba(0,0,0,.3)}
+    .modal-title{font-size:20px;font-weight:800;color:var(--primary);margin-bottom:6px}
+    .modal-desc{font-size:13px;color:var(--text2);margin-bottom:20px;line-height:1.6}
+    .modal-fg{margin-bottom:14px}
+    .modal-fg label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+                    color:var(--text2);display:block;margin-bottom:6px}
+    .modal-fg input{width:100%;padding:12px 16px;border:1px solid var(--border);border-radius:12px;
+                    font-size:14px;font-family:'Inter',sans-serif}
+    .modal-fg input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(26,115,232,.2)}
+    .modal-hint{font-size:11px;color:var(--text2);margin-top:4px;line-height:1.5}
+    .modal-hint a{color:var(--primary)}
+    .modal-btn{width:100%;padding:14px;background:var(--primary);color:#fff;border:none;
+               border-radius:12px;font-weight:800;font-size:15px;cursor:pointer;margin-top:4px}
+    .modal-btn:hover{background:#1764cc}
+    .bcfg{background:#e8eaed;color:var(--text2);padding:8px 14px;border-radius:40px;font-size:12px;
+          font-weight:700;cursor:pointer;border:none;box-shadow:var(--s1)}
+    .bcfg:hover{background:#dadce0}
+    .cfg-ok{background:#e6f4ea;color:var(--success);padding:8px 14px;border-radius:40px;font-size:12px;
+            font-weight:700;cursor:pointer;border:1px solid #86efac;box-shadow:var(--s1)}
+    .cfg-ok:hover{background:#d4edda}
+
     @media(max-width:600px){
       .gf{grid-template-columns:1fr}
       .dash{grid-template-columns:1fr 1fr}
@@ -257,6 +282,29 @@
 </head>
 <body>
 <div id="toast"></div>
+
+<!-- Config Modal -->
+<div id="modalCfg" class="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <div class="modal-title">⚙️ Configuração do Backend</div>
+    <div class="modal-desc">
+      Informe a URL do seu Google Apps Script publicado como Web App.<br>
+      Esta URL fica salva no navegador — não precisa configurar novamente.
+    </div>
+    <div class="modal-fg">
+      <label>🔗 URL do Web App (Google Apps Script)</label>
+      <input type="text" id="cfgUrl" placeholder="https://script.google.com/macros/s/XXXX/exec">
+      <div class="modal-hint">
+        No Apps Script: <b>Implantar → Nova implantação → Web App</b><br>
+        Executar como: <b>Eu</b> · Quem pode acessar: <b>Qualquer pessoa</b>
+      </div>
+    </div>
+    <button class="modal-btn" onclick="salvarConfig()">✅ Salvar e Conectar</button>
+    <div id="cfgErro" style="display:none;margin-top:12px;padding:10px 14px;background:#fce8e6;
+         border-radius:10px;font-size:13px;color:var(--danger);font-weight:600;"></div>
+  </div>
+</div>
+
 <div class="wrap">
 
   <div class="hcard">
@@ -266,6 +314,7 @@
         <div id="snet" class="snet online">📡 ONLINE</div>
         <div id="sfila" class="sfila">⏳ Fila: 0</div>
         <button class="bcsv" onclick="baixarRelatorio()">📥 CSV HOJE</button>
+        <button id="btnCfg" class="bcfg" onclick="abrirConfig()">⚙️</button>
       </div>
     </div>
     <div class="fg">
@@ -370,7 +419,107 @@
 <input type="file" id="camInput" accept="image/*" capture="environment" multiple style="display:none">
 
 <script>
-// ════════════ CONSTANTES ════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+// CONFIG — URL do Apps Script Web App
+// ═══════════════════════════════════════════════════════════════════
+var CFG_K = 'vfx_webapp_url_v9';
+
+function getWebAppUrl() {
+  return localStorage.getItem(CFG_K) || '';
+}
+
+function salvarConfig() {
+  var url = document.getElementById('cfgUrl').value.trim();
+  if (!url || !url.startsWith('https://script.google.com')) {
+    var er = document.getElementById('cfgErro');
+    er.style.display = 'block';
+    er.textContent = '❌ URL inválida. Deve começar com https://script.google.com';
+    return;
+  }
+  localStorage.setItem(CFG_K, url);
+  document.getElementById('modalCfg').style.display = 'none';
+  document.getElementById('cfgErro').style.display = 'none';
+  atualizarBtnCfg();
+  toast('✅ URL salva! Carregando dados...');
+  carregar();
+}
+
+function abrirConfig() {
+  var url = getWebAppUrl();
+  document.getElementById('cfgUrl').value = url;
+  document.getElementById('cfgErro').style.display = 'none';
+  document.getElementById('modalCfg').style.display = 'flex';
+}
+
+function atualizarBtnCfg() {
+  var btn = document.getElementById('btnCfg');
+  if (!btn) return;
+  var url = getWebAppUrl();
+  if (url) {
+    btn.className = 'cfg-ok';
+    btn.textContent = '✅ Backend';
+  } else {
+    btn.className = 'bcfg';
+    btn.textContent = '⚙️ Configurar';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CAMADA DE CHAMADA — substitui google.script.run
+// Todas as chamadas ao backend passam por aqui.
+// ═══════════════════════════════════════════════════════════════════
+function chamarBackend(acao, params, onSuccess, onFailure) {
+  var url = getWebAppUrl();
+  if (!url) {
+    // Tenta usar cache offline antes de pedir configuração
+    var cached = carregarCacheDB();
+    if (cached && (acao === 'puxarDadosBase')) {
+      onSuccess && onSuccess({ dados: cached.dados, ultimosStatus: cached.ultimosStatus || {} });
+      return;
+    }
+    // Sem URL configurada — abre modal
+    abrirConfig();
+    onFailure && onFailure({ message: 'URL do backend não configurada.' });
+    return;
+  }
+
+  // Monta a URL de chamada com ação e parâmetros GET ou POST
+  // O Apps Script doGet recebe ?action=X&params=JSON
+  // O Apps Script doPost recebe no body para salvarRegistro
+  var isPost = (acao === 'salvarRegistro');
+
+  var fetchUrl = url + '?action=' + encodeURIComponent(acao);
+  if (params !== undefined && params !== null && !isPost) {
+    fetchUrl += '&params=' + encodeURIComponent(JSON.stringify(params));
+  }
+
+  var fetchOpts = { method: 'GET' };
+  if (isPost) {
+    fetchOpts = {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: acao, params: params })
+    };
+  }
+
+  fetch(fetchUrl, fetchOpts)
+    .then(function(res) {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    })
+    .then(function(data) {
+      if (data && data._erro) throw new Error(data._erro);
+      onSuccess && onSuccess(data);
+    })
+    .catch(function(err) {
+      console.error('chamarBackend [' + acao + ']:', err);
+      onFailure && onFailure({ message: err.message || String(err) });
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CONSTANTES
+// ═══════════════════════════════════════════════════════════════════
 var CICLOS = {
   'rei pele':       {i:1,f:6},
   'papa francisco': {i:2,f:7},
@@ -387,27 +536,14 @@ var ACHADOS = [
   'Área bloqueada','Estrutura comprometida','Elétrica exposta',
   'Piso danificado','Porta/janela com defeito'
 ];
-var FILA_K  = 'vfx_fila_v9';
-var FILT_K  = 'vfx_filt_v9';
+var FILA_K     = 'vfx_fila_v9';
+var FILT_K     = 'vfx_filt_v9';
 var CACHE_DB_K = 'vfx_cache_db_v9';
 var CACHE_ST_K = 'vfx_cache_st_v9';
 
-// Índices do array retornado pelo servidor
 var DI = {
-  ORD:0,
-  UNI:1,
-  UNINORM:2,
-  BLC:3,
-  PAV:4,
-  AMB_TAG:5,
-  SUB:6,
-  DESC:7,
-  AVAL:8,
-  ADEQ:9,
-  INAD:10,
-  PEND:11,
-  OBS:12,
-  UID:13
+  ORD:0, UNI:1, UNINORM:2, BLC:3, PAV:4, AMB_TAG:5,
+  SUB:6, DESC:7, AVAL:8, ADEQ:9, INAD:10, PEND:11, OBS:12, UID:13
 };
 
 var DB = [], STATUS = {}, SEL = [], FSUB = [], FOTO_CTX = null, ENVIANDO = false;
@@ -423,7 +559,7 @@ function nrmU(s) { return nrm(s); }
 
 function esc(s) {
   return String(s)
-    .replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;').replace(/'/g,'&#039;');
 }
 
@@ -434,7 +570,7 @@ function toast(m,d) {
   setTimeout(function(){t.className=t.className.replace('show','');},d);
 }
 
-// Conexão
+// ── Conexão ──────────────────────────────────────────────────────
 function chkNet() {
   var el=document.getElementById('snet');
   var bc=document.getElementById('bcache');
@@ -449,7 +585,7 @@ function chkNet() {
 window.addEventListener('online',  function(){chkNet();processarFila();});
 window.addEventListener('offline', chkNet);
 
-// Ciclo
+// ── Ciclo ─────────────────────────────────────────────────────────
 function cicloInfo(nome, totalSubs) {
   var c = CICLOS[nrm(nome)];
   if (!c || totalSubs===0) return {
@@ -462,8 +598,8 @@ function cicloInfo(nome, totalSubs) {
   return {media:(totalSubs/6).toFixed(1),sub:ini+'–'+fim+' · fora do ciclo'};
 }
 
-// Fila offline
-function getFila(){try{return JSON.parse(localStorage.getItem(FILA_K)||'[]');}catch(e){return [];} }
+// ── Fila offline ──────────────────────────────────────────────────
+function getFila(){try{return JSON.parse(localStorage.getItem(FILA_K)||'[]');}catch(e){return [];}}
 function setFila(f){try{localStorage.setItem(FILA_K,JSON.stringify(f));}catch(e){}}
 function addFila(p){var f=getFila();f.push(p);setFila(f);updFila();}
 function updFila(){
@@ -475,24 +611,24 @@ function processarFila(){
   if(ENVIANDO||!navigator.onLine) return;
   var f=getFila();if(!f.length) return;
   ENVIANDO=true;
-  google.script.run
-    .withSuccessHandler(function(){
+  chamarBackend('salvarRegistro', f[0],
+    function(){
       var ff=getFila();ff.shift();setFila(ff);
       updFila();ENVIANDO=false;
       if(ff.length>0)processarFila();else toast('✅ Fila enviada com sucesso!');
-    })
-    .withFailureHandler(function(e){console.error(e);ENVIANDO=false;toast('❌ Erro ao enviar fila.',5000);})
-    .salvarRegistro(f[0]);
+    },
+    function(e){console.error(e);ENVIANDO=false;toast('❌ Erro ao enviar fila.',5000);}
+  );
 }
 setInterval(function(){if(navigator.onLine)processarFila();},30000);
 
-// Cache offline
+// ── Cache offline ─────────────────────────────────────────────────
 function salvarCacheDB(dados, status) {
   try {
     localStorage.setItem(CACHE_DB_K, JSON.stringify(dados));
     localStorage.setItem(CACHE_ST_K, JSON.stringify(status));
   } catch(e) {
-    try { localStorage.removeItem(CACHE_DB_K); localStorage.removeItem(CACHE_ST_K); } catch(e2){}
+    try{localStorage.removeItem(CACHE_DB_K);localStorage.removeItem(CACHE_ST_K);}catch(e2){}
   }
 }
 function carregarCacheDB() {
@@ -504,7 +640,7 @@ function carregarCacheDB() {
   } catch(e) { return null; }
 }
 
-// Regra 6 meses
+// ── Regra 6 meses ─────────────────────────────────────────────────
 function precisaReaval(uid){
   var st=STATUS[uid];
   if(!st||!st.dataUltimaAval||st.status.toUpperCase()!=='OK') return false;
@@ -519,10 +655,7 @@ function mesesDesde(uid){
   return Math.floor((new Date()-dt)/(1000*60*60*24*30.44));
 }
 
-// RESOLVER STATUS
-// ✅ Regra pedida: 
-// - se AVAL = "Não" → "Nao Avaliado"
-// - se AVAL = "Sim" e ADEQ = FALSE e INAD = FALSE → "Nao Avaliado"
+// ── Resolver Status ────────────────────────────────────────────────
 function resStatus(item){
   var uid=item[DI.UID];
   if (_rsCache[uid] !== undefined) return _rsCache[uid];
@@ -530,15 +663,10 @@ function resStatus(item){
   _rsCache[uid] = result;
   return result;
 }
-
 function _calcStatus(item){
   var uid=item[DI.UID];
-
-  // 1. Seleção atual
   var s=SEL.find(function(x){return x.uid===uid;});
   if(s && s.v && s.v.trim() !== '') return s.v;
-
-  // 2. STATUS da RESPOSTAS CHECK
   if(STATUS[uid] && STATUS[uid].status){
     var rc=STATUS[uid].status.trim().toUpperCase();
     if(rc==='OK')         return 'Ok';
@@ -546,38 +674,39 @@ function _calcStatus(item){
     if(rc==='N/A')        return 'N/A';
     if(rc !== '')         return 'Ok';
   }
-
-  // 3. BASE DE DADOS
   var colK = nrm(item[DI.INAD]);
   if(colK === 'verdadeiro' || colK === 'true') return 'Inadequado';
-
   var colJ = nrm(item[DI.ADEQ]);
   if(colJ === 'verdadeiro' || colJ === 'true') return 'Ok';
-
-  var colI = nrm(item[DI.AVAL]); // "sim" / "não" / "n/a" etc.
-
-  // N/A explícito na base
+  var colI = nrm(item[DI.AVAL]);
   if(colI === 'n/a' || colI === 'nao_aplicavel' || colI === 'nao aplicavel' ||
      colI === 'não aplicável' || colI === 'na') {
     return 'N/A';
   }
-
-  // Se chegou aqui, ADEQ e INAD são FALSO / vazios.
-  // Regra que você pediu:
-  // - AVAL = "não" → não avaliado
-  // - AVAL = "sim" e J/K = false → não avaliado
   return 'Nao Avaliado';
 }
 
-// CARREGAR DADOS
+// ── Carregar Dados ─────────────────────────────────────────────────
 function carregar(u){
   if(u===undefined) u=document.getElementById('u').value.trim();
   invCache();invRsCache();
 
-  if (!navigator.onLine) {
+  if (!getWebAppUrl()) {
     var cached = carregarCacheDB();
     if (cached) {
       DB=cached.dados; STATUS=cached.ultimosStatus||{};
+      popularFiltros(); renderLista(); updContadores();
+      toast('📦 Usando cache local. Configure o backend para atualizar.');
+    } else {
+      abrirConfig();
+    }
+    return;
+  }
+
+  if (!navigator.onLine) {
+    var cached2 = carregarCacheDB();
+    if (cached2) {
+      DB=cached2.dados; STATUS=cached2.ultimosStatus||{};
       popularFiltros(); renderLista(); updContadores();
       if(u) carregarHist(u);
       toast('📦 Offline — dados do cache local.');
@@ -590,20 +719,15 @@ function carregar(u){
   }
 
   toast('⏳ Carregando dados...');
-  google.script.run
-    .withSuccessHandler(function(r){
-      if(!r || !r.dados){
-        toast('⚠️ Servidor retornou dados vazios.',4000);
-        return;
-      }
+  chamarBackend('puxarDadosBase', u || null,
+    function(r){
+      if(!r || !r.dados){toast('⚠️ Servidor retornou dados vazios.',4000);return;}
       DB=r.dados; STATUS=r.ultimosStatus||{};
       invCache(); invRsCache();
       salvarCacheDB(r.dados, r.ultimosStatus||{});
       if (!u && r.unidadesAvaliadas && r.unidadesAvaliadas.length > 0) {
         UNIDS_AVAL = {};
-        r.unidadesAvaliadas.forEach(function(uCanon) {
-          UNIDS_AVAL[nrmU(uCanon)] = true;
-        });
+        r.unidadesAvaliadas.forEach(function(uCanon){ UNIDS_AVAL[nrmU(uCanon)] = true; });
       }
       popularFiltros(); renderLista(); updContadores();
       var uu=document.getElementById('u').value.trim();
@@ -611,12 +735,12 @@ function carregar(u){
       var numItens = r.dados.length > 1 ? (r.dados.length - 1) : 0;
       var numUnidades = r.unidadesUnicas ? r.unidadesUnicas.length : 0;
       toast('✅ ' + numItens + ' itens carregados (' + numUnidades + ' unidades)');
-    })
-    .withFailureHandler(function(e){
+    },
+    function(e){
       console.error('Erro ao carregar dados:', e);
-      var cached = carregarCacheDB();
-      if (cached) {
-        DB=cached.dados; STATUS=cached.ultimosStatus||{};
+      var cached3 = carregarCacheDB();
+      if (cached3) {
+        DB=cached3.dados; STATUS=cached3.ultimosStatus||{};
         toast('⚠️ Erro no servidor — usando cache local.',4000);
       } else {
         toast('❌ Erro: '+(e.message||e),5000);
@@ -624,48 +748,36 @@ function carregar(u){
       }
       invCache(); invRsCache();
       popularFiltros(); renderLista(); updContadores();
-    })
-    .puxarDadosBase(u);
+    }
+  );
 }
 
-// POPULAR FILTROS
+// ── Popular Filtros ────────────────────────────────────────────────
 function popularFiltros(){
   var ul=document.getElementById('lu'),bl=document.getElementById('lb');
   var pl=document.getElementById('lpav'),sl=document.getElementById('lsub');
   ul.innerHTML='';bl.innerHTML='';pl.innerHTML='';sl.innerHTML='';
-
   var uMap={}, bSet={}, pSet={}, sSet={};
-
   DB.slice(1).forEach(function(row){
     var ru=(row[DI.UNI]||'').trim();
-    if(ru){
-      var k=nrmU(ru);
-      if(!uMap[k] || ru > uMap[k]) uMap[k]=ru;
-    }
+    if(ru){var k=nrmU(ru);if(!uMap[k]||ru>uMap[k])uMap[k]=ru;}
     var b=(row[DI.BLC]||'').trim(); if(b) bSet[b]=1;
     var p=(row[DI.PAV]||'').trim(); if(p) pSet[p]=1;
     var s=(row[DI.SUB]||'').trim(); if(s) sSet[s]=1;
   });
-
   Object.keys(uMap).sort().forEach(function(k){
     if (!UNIDS_AVAL || UNIDS_AVAL[k]) ul.innerHTML+='<option value="'+esc(uMap[k])+'">';
   });
   Object.keys(bSet).sort().forEach(function(v){bl.innerHTML+='<option value="'+esc(v)+'">';});
   Object.keys(pSet).sort().forEach(function(v){pl.innerHTML+='<option value="'+esc(v)+'">';});
   Object.keys(sSet).sort().forEach(function(v){sl.innerHTML+='<option value="'+esc(v)+'">';});
-
   var sf=JSON.parse(localStorage.getItem(FILT_K)||'{}');
   document.getElementById('resp').value = sf.resp||'';
   document.getElementById('b').value    = sf.b   ||'';
   document.getElementById('pav').value  = sf.pav ||'';
   document.getElementById('sub').value  = sf.sub ||'';
   document.getElementById('fst').value  = sf.fst ||'NAO_AVALIADOS';
-
-  if(sf.u){
-    var k=nrmU(sf.u);
-    document.getElementById('u').value=uMap[k]||sf.u;
-  }
-
+  if(sf.u){var k=nrmU(sf.u);document.getElementById('u').value=uMap[k]||sf.u;}
   ['resp','u','b','pav','sub'].forEach(mkpre);
 }
 
@@ -687,11 +799,10 @@ function savFilt(){
   ['resp','u','b','pav','sub'].forEach(mkpre);
 }
 
-// CACHE FILTRO
+// ── Cache Filtro ───────────────────────────────────────────────────
 var _ci=null,_cc='';
 function invCache(){_ci=null;_cc='';}
 
-// ✅ CORREÇÃO AQUI: NÃO filtra mais aval="nao" 
 function getItens(){
   var uv=nrmU(document.getElementById('u').value);
   var bv=nrm(document.getElementById('b').value);
@@ -711,7 +822,7 @@ function getItens(){
   return _ci;
 }
 
-// Filtros rápidos
+// ── Filtros rápidos ────────────────────────────────────────────────
 var _dt=null;
 function updCDebounced(){clearTimeout(_dt);_dt=setTimeout(updContadores,80);}
 
@@ -731,7 +842,7 @@ function filtroNA(){
   toast('⚫ Mostrando itens N/A pendentes.');
 }
 
-// MARCAR STATUS
+// ── Marcar Status ──────────────────────────────────────────────────
 function marcar(uid,v,uni,bl,pav,amb,desc,tipo){
   delete _rsCache[uid];
   var s=SEL.find(function(x){return x.uid===uid;});
@@ -757,7 +868,7 @@ function marcar(uid,v,uni,bl,pav,amb,desc,tipo){
   } else {invCache();renderLista();updCDebounced();}
 }
 
-// Helpers HTML
+// ── HTML Helpers ───────────────────────────────────────────────────
 function thumbH(uid,i,src){
   var ua=(uid===null||uid==='')?'':' data-uid="'+esc(uid)+'"';
   return '<div class="thumb"><img src="'+esc(src)+'" alt="Foto '+i+'">'+
@@ -793,36 +904,29 @@ function cardH(item,idx){
   var isOk=st==='Ok',isIN=st==='Inadequado',isNA=st==='N/A';
   var hasA=pendH||obsH||achH;
   var prR=isOk&&precisaReaval(uid),mp=mesesDesde(uid);
-
   var cls='ic';
   if(isNA)cls+=' ina';
   else if(isIN||hasA)cls+=' inad';
   else if(isOk&&prR)cls+=' ior';
-
   var hHtml='';
   if(hasA){
     hHtml='<div class="hbox">'+(pendH?'<div>📋 <b>Pendência:</b> '+esc(pendH)+'</div>':'')+
       (obsH?'<div>💬 <b>Última Obs:</b> '+esc(obsH)+'</div>':'')+
       (achH?'<div>🔎 <b>Achados:</b> '+esc(achH)+'</div>':'')+'</div>';
   }
-
   var rvB=prR?'<div class="breavbadge">🔄 Reavaliação vencida'+(mp!==null?' ('+mp+'m atrás)':'')+'</div>':
     (isOk&&dtAv?'<div style="font-size:11px;color:var(--text2);margin-bottom:6px;">✅ Avaliado em '+esc(dtAv)+'</div>':'');
   var naB=isNA?'<div class="bnabadge">⚫ N/A — Retornar</div>':'';
-
   var fH=(sl&&sl.fotos)?sl.fotos.map(function(f,i){return thumbH(uid,i,f.b64);}).join(''):'';
   var obsV=sl?esc(sl.obs||''):'';
   var achSel=(sl&&sl.achados)?sl.achados:(achH?achH.split(', ').filter(Boolean):[]);
-
   var chipsH=ACHADOS.map(function(a){
     var at=achSel.indexOf(a)>=0?' sel':'';
     return '<span class="chip'+at+'" data-uid="'+esc(uid)+'" data-ach="'+esc(a)+'">'+esc(a)+'</span>';
   }).join('');
-
   var si=isOk?'✅':isIN?'❌':isNA?'⚫':'⬜';
   var aOk=isOk?'aok':'',aNk=isIN?'ank':'',aNa=isNA?'ana':'';
   var tipo=isIN?'Inadequado':isNA?'N/A':isOk?'Adequado':'Normal';
-
   return '<div class="'+cls+'" data-uid="'+esc(uid)+'">'+
     '<div class="ihr"><div class="inum">'+(idx+1)+'</div>'+
     '<div class="iinf"><div class="iloc">'+esc(pav)+' › '+esc(amb)+'</div>'+
@@ -842,7 +946,7 @@ function cardH(item,idx){
     '<div class="bfoto" data-uid="'+esc(uid)+'">📸 Adicionar Foto</div></div>';
 }
 
-// RENDER LISTA
+// ── Render Lista ───────────────────────────────────────────────────
 function renderLista(){
   var lista=document.getElementById('lista');
   var u=document.getElementById('u').value.trim();
@@ -850,7 +954,6 @@ function renderLista(){
   var sf=document.getElementById('fst').value;
   lista.innerHTML='';
   if(!u){lista.innerHTML='<div class="empty">Selecione uma unidade para começar.</div>';return;}
-
   var todos=getItens(), subMap={};
   var statusCache={};
   todos.forEach(function(it){
@@ -863,9 +966,7 @@ function renderLista(){
     var d=subMap[ck];d.total++;d.itens.push(it);
     if(s==='Ok')d.ok++;else if(s==='Inadequado')d.nk++;else if(s==='N/A')d.na++;else d.naoAv++;
   });
-
   var parts=[];
-
   if(sub){
     parts.push(cardSubHTML(sub));
     parts.push(progBarHTML(todos,sub));
@@ -901,13 +1002,11 @@ function renderLista(){
       if(pa[1]!==pb[1])return pa[1].localeCompare(pb[1]);
       return pa[2].localeCompare(pb[2]);
     });
-
     if(sf==='NAO_AVALIADOS')     subs=subs.filter(function(k){return subMap[k].naoAv>0;});
     else if(sf==='INADEQUACOES') subs=subs.filter(function(k){return subMap[k].nk>0;});
     else if(sf==='NA_PENDENTES') subs=subs.filter(function(k){return subMap[k].na>0;});
     else if(sf==='AVALIADOS_OK') subs=subs.filter(function(k){return subMap[k].ok>0;});
     else subs=subs.filter(function(k){var d=subMap[k];return d.naoAv>0||d.nk>0||d.na>0;});
-
     if(!subs.length){
       var msg2=sf==='NAO_AVALIADOS'?'✅ Todos já foram avaliados!':
         sf==='INADEQUACOES'?'✅ Nenhuma inadequação pendente!':
@@ -915,8 +1014,6 @@ function renderLista(){
         sf==='AVALIADOS_OK'?'Nenhum item OK. Avalie os itens primeiro.':'✅ Nenhuma pendência!';
       parts.push('<div class="empty">'+msg2+'</div>');
     } else {
-      // (demais blocos: inad, NA, OK, não avaliados) — idênticos ao código anterior
-      // por brevidade, mantendo igual ao que você já tinha
       var inad=subs.filter(function(k){return subMap[k].nk>0;});
       if((sf==='INADEQUACOES'||sf==='TUDO') && inad.length){
         parts.push('<h2 class="stit" style="color:var(--danger);">❌ REAVALIAÇÕES PENDENTES</h2>');
@@ -933,7 +1030,6 @@ function renderLista(){
             '<span style="font-size:20px;color:var(--danger);">›</span></div>');
         });
       }
-
       var naP=subs.filter(function(k){return subMap[k].na>0;});
       if((sf==='NA_PENDENTES'||sf==='TUDO') && naP.length){
         parts.push('<h2 class="stit" style="color:var(--na);">⚫ N/A PENDENTES — RETORNAR</h2>');
@@ -950,7 +1046,6 @@ function renderLista(){
             '<span style="font-size:20px;color:var(--na);">›</span></div>');
         });
       }
-
       var okS=subs.filter(function(k){return subMap[k].ok>0;});
       if((sf==='AVALIADOS_OK'||sf==='TUDO') && okS.length){
         parts.push('<h2 class="stit" style="color:var(--success);">🔄 AVALIADOS OK — REAVALIAR</h2>');
@@ -970,10 +1065,8 @@ function renderLista(){
             '<span style="font-size:20px;color:var(--success);">›</span></div>');
         });
       }
-
       var na2=subs.filter(function(k){
-        var d=subMap[k];
-        return d.naoAv>0&&(sf==='NAO_AVALIADOS'||(d.nk===0&&d.na===0));
+        var d=subMap[k];return d.naoAv>0&&(sf==='NAO_AVALIADOS'||(d.nk===0&&d.na===0));
       });
       if((sf==='NAO_AVALIADOS'||sf==='TUDO') && na2.length){
         parts.push('<h2 class="stit" style="color:var(--warning);">⬜ SUBAMBIENTES NÃO AVALIADOS</h2>');
@@ -998,7 +1091,6 @@ function renderLista(){
   renderGalerias();
 }
 
-// LIMPAR FILTROS SECUNDÁRIOS
 function limparSecundarios(){
   document.getElementById('b').value='';
   document.getElementById('pav').value='';
@@ -1017,7 +1109,7 @@ function irParaSub(uni,bl,pav,sub,st){
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
-// CONTADORES / PROGRESSO
+// ── Contadores / Progresso ─────────────────────────────────────────
 function updPG(){
   var u=document.getElementById('u').value.trim();
   var cp=document.getElementById('cpg');
@@ -1026,9 +1118,7 @@ function updPG(){
   var todos=getItens(),total=0,av=0,ok=0,nk=0,na=0;
   todos.forEach(function(it){
     total++;var s=resStatus(it);
-    if(s==='Ok'||s==='Inadequado'||s==='N/A'){
-      av++;if(s==='Ok')ok++;else if(s==='Inadequado')nk++;else na++;
-    }
+    if(s==='Ok'||s==='Inadequado'||s==='N/A'){av++;if(s==='Ok')ok++;else if(s==='Inadequado')nk++;else na++;}
   });
   var pct=total>0?(av/total)*100:0,flt=total-av;
   var fill=document.getElementById('pgf');
@@ -1099,7 +1189,7 @@ function zerarC(){
   document.getElementById('cpg').style.display='none';
 }
 
-// FOTOS
+// ── Fotos ──────────────────────────────────────────────────────────
 function handleFotos(e){
   var files=e.target.files;if(!files.length) return;
   var ps=[];
@@ -1145,7 +1235,7 @@ function renderGalerias(){
   SEL.forEach(function(sl){if(sl.fotos&&sl.fotos.length>0)renderGal(sl.uid,sl.fotos);});
 }
 
-// SALVAR
+// ── Salvar ─────────────────────────────────────────────────────────
 function tentarSalvar(){
   var resp=document.getElementById('resp').value.trim();
   var u=document.getElementById('u').value.trim();
@@ -1154,53 +1244,43 @@ function tentarSalvar(){
   if(!resp||!u||!b){toast('Preencha Inspetor, Unidade e Bloco.',4000);return;}
   var its=SEL.filter(function(s){return s.v||s.obs||s.fotos.length>0||(s.achados&&s.achados.length>0);});
   if(!its.length&&!FSUB.length){toast('Nenhuma avaliação para salvar.',3000);return;}
-
   var pct={
     r:resp, u:u, b:b, sub:sub,
     fotosSubambiente:FSUB.map(function(f){return f.b64;}),
     itens:its.map(function(s){
       return {
-        pav:s.pav,
-        amb:s.amb,
-        p:s.p,
-        v:s.v,
-        obs:s.obs,
+        pav:s.pav, amb:s.amb, p:s.p, v:s.v, obs:s.obs,
         fotos:s.fotos.map(function(f){return f.b64;}),
-        tipo:s.tipo,
-        achados:(s.achados||[]).join(', ')
+        tipo:s.tipo, achados:(s.achados||[]).join(', ')
       };
     })
   };
-
   var btn=document.getElementById('bsave');
   btn.textContent='💾 SALVANDO...';btn.disabled=true;
-
   if(!navigator.onLine){
     addFila(pct);toast('🔴 OFFLINE. Salvo na fila.');
     limpar();btn.textContent='💾 SALVAR AVALIAÇÕES';btn.disabled=false;return;
   }
-
-  google.script.run
-    .withSuccessHandler(function(){
+  chamarBackend('salvarRegistro', pct,
+    function(){
       toast('✅ Avaliações salvas com sucesso!');
       updHoje();
       var uu=document.getElementById('u').value.trim();
-      if(uu)carregarHist(uu);
+      if(uu) carregarHist(uu);
       limpar();btn.textContent='💾 SALVAR AVALIAÇÕES';btn.disabled=false;
-    })
-    .withFailureHandler(function(e){
+    },
+    function(e){
       console.error(e);toast('❌ Erro ao salvar: '+(e.message||e),5000);
       addFila(pct);btn.textContent='💾 SALVAR AVALIAÇÕES';btn.disabled=false;
-    })
-    .salvarRegistro(pct);
+    }
+  );
 }
 
 function limpar(){SEL=[];FSUB=[];invRsCache();carregar(document.getElementById('u').value.trim());}
 
-// VOZ
+// ── Voz ────────────────────────────────────────────────────────────
 var SAPI=window.SpeechRecognition||window.webkitSpeechRecognition||null;
 var micUid=null,recObj=null;
-
 function iniciarVoz(uid){
   if(!SAPI){toast('❌ Sem suporte a voz.',4000);return;}
   if(micUid===uid){pararVoz();return;}
@@ -1218,18 +1298,18 @@ function iniciarVoz(uid){
   recObj.onerror=function(ev){btn.classList.remove('rec');micUid=null;toast('❌ Erro: '+ev.error,4000);};
   recObj.start();toast('🎙️ Ouvindo...');
 }
-
 function pararVoz(){
   if(recObj){recObj.stop();recObj=null;}
   var btn=document.querySelector('.bmic.rec');if(btn)btn.classList.remove('rec');
   micUid=null;
 }
 
-// CSV
+// ── CSV ─────────────────────────────────────────────────────────────
 function baixarRelatorio(){
+  if(!getWebAppUrl()){toast('Configure o backend primeiro.',3000);abrirConfig();return;}
   toast('⏳ Gerando CSV...');
-  google.script.run
-    .withSuccessHandler(function(dados){
+  chamarBackend('obterRespostasDoDia', null,
+    function(dados){
       if(!dados||!dados.length){toast('Nenhum dado hoje.',3000);return;}
       var csv='\uFEFF'+dados.map(function(row){return row.map(function(c){
         var v=(c===null||c===undefined)?'':String(c);
@@ -1242,36 +1322,35 @@ function baixarRelatorio(){
       a.style.display='none';document.body.appendChild(a);a.click();
       document.body.removeChild(a);URL.revokeObjectURL(url);
       toast('✅ CSV baixado!');
-    })
-    .withFailureHandler(function(e){toast('❌ Erro: '+(e.message||e),5000);})
-    .obterRespostasDoDia();
+    },
+    function(e){toast('❌ Erro: '+(e.message||e),5000);}
+  );
 }
 
-// HISTÓRICO
+// ── Histórico ───────────────────────────────────────────────────────
 function updHoje(){
-  google.script.run
-    .withSuccessHandler(function(n){var el=document.getElementById('chj');if(el)el.textContent=n;})
-    .withFailureHandler(function(){})
-    .obterAmbientesVerificadosHoje();
+  if(!getWebAppUrl()) return;
+  chamarBackend('obterAmbientesVerificadosHoje', null,
+    function(n){var el=document.getElementById('chj');if(el)el.textContent=n;},
+    function(){}
+  );
 }
 
 function carregarHist(unidade){
   var card=document.getElementById('chist'),cont=document.getElementById('hcont');
   card.style.display='block';
-  if (!navigator.onLine) {
+  if (!getWebAppUrl()||!navigator.onLine) {
     cont.innerHTML='<div class="hload" style="color:var(--warning);">📦 Offline — histórico indisponível.</div>';
     return;
   }
   cont.innerHTML='<div class="hload">⏳ Carregando histórico...</div>';
-  google.script.run
-    .withSuccessHandler(function(d){
+  chamarBackend('obterHistorico6Meses', unidade,
+    function(d){
       if(!d||!d.meses||!d.meses.length){cont.innerHTML='<div class="hload">Nenhum registro nos últimos 6 meses.</div>';return;}
       cont.innerHTML=buildHist(d,unidade);
-    })
-    .withFailureHandler(function(e){
-      cont.innerHTML='<div class="hload" style="color:var(--danger);">Erro ao carregar histórico.</div>';
-    })
-    .obterHistorico6Meses(unidade);
+    },
+    function(e){cont.innerHTML='<div class="hload" style="color:var(--danger);">Erro ao carregar histórico.</div>';}
+  );
 }
 
 function buildHist(d,unidade){
@@ -1287,7 +1366,6 @@ function buildHist(d,unidade){
   } else {
     regraH='<div class="crcicloh"><b>📋 Regra dos 6 meses:</b> Todos os itens devem ser reavaliados a cada <b>6 meses</b>.</div>';
   }
-
   var uAtual=document.getElementById('u').value.trim();
   var grid='<div class="hgrid">';
   d.meses.forEach(function(m){
@@ -1308,55 +1386,46 @@ function buildHist(d,unidade){
       '</div>';
   });
   grid+='</div>';
-
   var bar='<div class="hbarwrap"><div class="hbarrow">'+
     '<div class="hbarlbl">Cobertura</div>'+
     '<div class="hbarbg"><div class="hbarfill" style="width:'+(d.percentualCobertura||0)+'%"></div></div>'+
     '<div class="hbarcnt">'+(d.percentualCobertura||0).toFixed(0)+'%</div></div></div>';
-
   var resumo='<div class="hresumo">'+
     '<div class="hri"><div class="hriv">'+d.totalSubambientes+'</div><div class="hril">Amb. únicos visitados</div></div>'+
     '<div class="hri"><div class="hriv">'+d.totalVisitados+'</div><div class="hril">Total de registros</div></div>'+
     '<div class="hri"><div class="hriv">'+d.totalInadequados+'</div><div class="hril">Reg. com inadequação</div></div>'+
     '</div>';
-
   return regraH+grid+bar+resumo;
 }
 
-// EVENTOS
+// ── Eventos ────────────────────────────────────────────────────────
 function onClick(e){
   var t=e.target;
-
+  // Fechar modal clicando fora
+  if(t===document.getElementById('modalCfg')){
+    if(getWebAppUrl()) document.getElementById('modalCfg').style.display='none';
+    return;
+  }
   var bopt=t.closest('.bopt');
   if(bopt){marcar(bopt.dataset.uid,bopt.dataset.v,bopt.dataset.uni,bopt.dataset.bl,bopt.dataset.pav,bopt.dataset.amb,bopt.dataset.desc,bopt.dataset.tipo);return;}
-
   var chip=t.closest('.chip');
   if(chip){toggleAch(chip.dataset.uid,chip.dataset.ach);return;}
-
   var bmic=t.closest('.bmic');
   if(bmic){iniciarVoz(bmic.dataset.muid);return;}
-
   var cnv2=t.closest('.cnv2');
   if(cnv2){irParaSub(cnv2.dataset.uni,cnv2.dataset.bl,cnv2.dataset.pav,cnv2.dataset.sub,'NAO_AVALIADOS');return;}
-
   var cig=t.closest('.cig');
   if(cig){irParaSub(cig.dataset.uni,cig.dataset.bl,cig.dataset.pav,cig.dataset.sub,'INADEQUACOES');return;}
-
   var cng=t.closest('.cng');
   if(cng){irParaSub(cng.dataset.uni,cng.dataset.bl,cng.dataset.pav,cng.dataset.sub,'NA_PENDENTES');return;}
-
   var cokl=t.closest('.cokl');
   if(cokl){irParaSub(cokl.dataset.uni,cokl.dataset.bl,cokl.dataset.pav,cokl.dataset.sub,'AVALIADOS_OK');return;}
-
   var bhr=t.closest('.bhr');
   if(bhr){irParaSub(bhr.dataset.uni,bhr.dataset.bl,bhr.dataset.pav,bhr.dataset.sub,bhr.dataset.filt||'INADEQUACOES');return;}
-
   var bhrna=t.closest('.bhrna');
   if(bhrna){irParaSub(bhrna.dataset.uni,bhrna.dataset.bl,bhrna.dataset.pav,bhrna.dataset.sub,'NA_PENDENTES');return;}
-
   var bhrok=t.closest('.bhrok');
   if(bhrok){irParaSub(bhrok.dataset.uni,bhrok.dataset.bl,bhrok.dataset.pav,bhrok.dataset.sub,'AVALIADOS_OK');return;}
-
   var bfoto=t.closest('.bfoto');
   if(bfoto){
     var uid=bfoto.dataset.uid;
@@ -1364,7 +1433,6 @@ function onClick(e){
     document.getElementById('camInput').value='';
     document.getElementById('camInput').click();return;
   }
-
   var tdel=t.closest('.tdel');
   if(tdel){removerFoto(tdel.dataset.uid,parseInt(tdel.dataset.idx,10));return;}
 }
@@ -1400,16 +1468,15 @@ function toggleAch(uid,ach){
   });
 }
 
-// INIT
+// ── Init ───────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded',function(){
-  chkNet();updFila();
+  chkNet();updFila();atualizarBtnCfg();
   document.addEventListener('click',onClick);
   document.addEventListener('change',function(e){
     var ta=e.target;
     if(ta.tagName==='TEXTAREA'&&ta.dataset.uid)onTA(e);
   });
   document.getElementById('camInput').addEventListener('change',handleFotos);
-
   ['u','b','pav','sub'].forEach(function(id){
     document.getElementById(id).addEventListener('change',function(){
       savFilt();invCache();invRsCache();
@@ -1421,9 +1488,14 @@ document.addEventListener('DOMContentLoaded',function(){
   document.getElementById('fst').addEventListener('change',function(){
     savFilt();invRsCache();renderLista();updCDebounced();
   });
-
-  carregar();
-  updHoje();
+  // Carrega dados; se não tiver URL configurada, abre modal automaticamente
+  if (!getWebAppUrl()) {
+    abrirConfig();
+    renderLista();
+  } else {
+    carregar();
+    updHoje();
+  }
 });
 </script>
 </body>
