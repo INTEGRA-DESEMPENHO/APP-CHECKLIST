@@ -1,16 +1,11 @@
 /* ═══════════════════════════════════════════════════════
    Vistoria Fênix v9 — app.js COMPLETO
-   Leitura: SheetDB.io (BASE DE DADOS)
-   Escrita/Status: Google Apps Script
-   Cache: localStorage
+   FRONTEND no GitHub, BACKEND no Apps Script (Code.gs)
 ═══════════════════════════════════════════════════════ */
 
-// ─── CONFIGURAÇÃO — SUBSTITUA AS DUAS URLS ABAIXO ────────
-var GAS_URL      = 'SUA_URL_GAS_AQUI';
-// Exemplo: 'https://script.google.com/macros/s/AKfycb.../exec'
-
-var SHEETDB_URL  = 'https://sheetdb.io/api/v1/p5kdwbijb335u';
-// Já está preenchida com a sua URL do SheetDB
+// ─── CONFIGURAÇÃO — TROQUE PELA SUA URL DO GAS ───────────
+var GAS_URL = 'SUA_URL_GAS_AQUI'; 
+// Exemplo: 'https://script.google.com/macros/s/AKfycbXXXXXXXXXXXX/exec'
 
 // ─── Chaves localStorage ─────────────────────────────────
 var LS_STATUS  = 'vfx_status_v9';
@@ -26,18 +21,19 @@ var FSUB    = [];   // fotos do subambiente
 var FOTO_CTX = null;
 var _rsCache = {};
 
-// ─── Índices das colunas no DB (array de arrays) ─────────
+// ─── Índices das colunas no DB ───────────────────────────
 var DI = {
   ORD:0, UNI:1, UNINORM:2, BLC:3, PAV:4,
   AMB_TAG:5, SUB:6, DESC:7, AVAL:8,
   ADEQ:9, INAD:10, PEND:11, OBS:12, UID:13
 };
 
-// ─── Ciclos e meses ───────────────────────────────────────
-var CICLOS = {};
-var MN = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+// ─── Ciclos (se usar) ────────────────────────────────────
+var CICLOS = {}; // se quiser regra de meses por unidade, preenche aqui
+var MN = ['Jan','Fev','Mar','Abr','Maio','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 var ME = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
           'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
 var ACHADOS = [
   'Infiltração','Vazamento','Equipamento danificado','Falta de EPI',
   'Iluminação inadequada','Sinalização ausente','Resíduo irregular',
@@ -87,7 +83,7 @@ function addFilaSave(p){var f=getFilaSave();f.push(p);setFilaSave(f);}
 function updFila(){
   var f=getFilaSave();
   var el=document.getElementById('sfila');
-  if(el){el.style.display=f.length>0?'inline-flex':'none';el.textContent='⏳ Fila: '+f.length;}
+  if(el){el.style.display=f.length?'inline-flex':'none';el.textContent='⏳ Fila: '+f.length;}
 }
 
 // ─── Toast ────────────────────────────────────────────────
@@ -101,19 +97,18 @@ function toast(msg,dur){
 }
 
 // ─── Cache DB ─────────────────────────────────────────────
-function salvarCacheDB(dados){lsSet(LS_CACHE,dados);}
+function salvarCacheDB(obj){lsSet(LS_CACHE,obj);}
 function carregarCacheDB(){return lsGet(LS_CACHE);}
 
 // ─── Ciclo semestral ─────────────────────────────────────
 function cicloInfo(unidade,totalSubs){
   var uN=nrmU(unidade),ciclo=CICLOS[uN];
-  if(!ciclo)return{media:'—',sub:'Ciclo não definido para esta unidade'};
+  if(!ciclo)return{media:'—',sub:'Ciclo não definido'};
   var meses=ciclo.f-ciclo.i+1;
-  var media=meses>0?Math.ceil(totalSubs/meses):totalSubs;
-  return{media:media,sub:'Ciclo: '+MN[ciclo.i-1]+' a '+MN[ciclo.f-1]};
+  return{media:Math.ceil(totalSubs/meses),sub:'Ciclo: '+MN[ciclo.i-1]+' a '+MN[ciclo.f-1]};
 }
 
-// ─── Reavaliação (6 meses) ────────────────────────────────
+// ─── Reavaliação (6 meses) ───────────────────────────────
 function precisaReaval(uid){
   var st=STATUS[uid];
   if(!st||!st.dataUltimaAval||st.status.toUpperCase()!=='OK')return false;
@@ -150,14 +145,13 @@ function _calcStatus(item){
   var adeq=nrm(item[DI.ADEQ]);
   if(adeq==='verdadeiro'||adeq==='true')return'Ok';
   var aval=nrm(item[DI.AVAL]);
-  if(aval==='n/a'||aval==='na'||aval==='nao aplicavel'||aval==='não aplicável')return'N/A';
+  if(aval==='n/a'||aval==='na')return'N/A';
   return'Nao Avaliado';
 }
 
 // ─── Comunicação com GAS ─────────────────────────────────
 function callGas(action,params,method,body){
-  params=params||{};
-  method=method||'GET';
+  params=params||{};method=method||'GET';
   var url=GAS_URL+'?action='+encodeURIComponent(action);
   Object.keys(params).forEach(function(k){
     url+='&'+encodeURIComponent(k)+'='+encodeURIComponent(params[k]);
@@ -168,179 +162,88 @@ function callGas(action,params,method,body){
     opts.body=JSON.stringify({action:action,data:body});
   }
   return fetch(url,opts)
-    .then(function(r){return r.json();})
-    .then(function(j){
+    .then(function(r){return r.text();})
+    .then(function(txt){
+      var j;
+      try{j=JSON.parse(txt);}catch(e){throw new Error('Resposta inválida do servidor.');}
       if(j&&j.status==='error')throw new Error(j.erro||'Erro GAS');
       return j&&j.data!==undefined?j.data:j;
     });
 }
 
-// ─── Comunicação com SheetDB ─────────────────────────────
-async function callSheetDB(){
-  var resp=await fetch(SHEETDB_URL+'?limit=9999');
-  if(!resp.ok)throw new Error('SheetDB HTTP '+resp.status);
-  var rows=await resp.json();
-  if(!Array.isArray(rows)||rows.length===0)return{dados:[],unidadesUnicas:[]};
-
-  // Descobre os cabeçalhos reais da planilha
-  var firstRow=rows[0];
-  var keys=Object.keys(firstRow);
-
-  // Tenta mapear os nomes das colunas de forma flexível
-  function findKey(candidates){
-    for(var i=0;i<candidates.length;i++){
-      var found=keys.find(function(k){
-        return nrm(k)===nrm(candidates[i]);
-      });
-      if(found)return found;
-    }
-    return null;
-  }
-
-  var K={
-    ord   : findKey(['Ordem','Order','ordem']),
-    uni   : findKey(['Unidade','unidade','UNIDADE']),
-    blc   : findKey(['Bloco','bloco','BLOCO']),
-    pav   : findKey(['Pavimento','pavimento','PAVIMENTO']),
-    tag   : findKey(['AmbTag','ambTag','TAG','tag']),
-    sub   : findKey(['NomeAmb','Nome Ambiente','nomeamb','Subambiente','subambiente','SUB']),
-    desc  : findKey(['Verificação','Verificacao','verificacao','Item','item','DESC']),
-    aval  : findKey(['Aval','aval','Local avaliado?','Local Avaliado']),
-    adeq  : findKey(['Adeq','adeq','Adequado','adequado']),
-    inad  : findKey(['Inad','inad','Inadequado','inadequado']),
-    pend  : findKey(['Pend','pend','Pendência','Pendencia','pendencia']),
-    obs   : findKey(['Obs','obs','Observações','Observacoes','observacoes'])
-  };
-
-  var header=['Ordem','Unidade','UniNorm','Bloco','Pavimento','AmbTag',
-              'NomeAmb','Verificação','Aval','Adeq','Inad','Pend','Obs','UID'];
-  var dados=[header];
-  var uSet={},unicas=[];
-
-  rows.forEach(function(row){
-    var uni   =(K.uni  ?row[K.uni]  ||'':'').trim();
-    var blc   =(K.blc  ?row[K.blc]  ||'':'').trim();
-    var pav   =(K.pav  ?row[K.pav]  ||'':'').trim();
-    var sub   =(K.sub  ?row[K.sub]  ||'':'').trim();
-    var desc  =(K.desc ?row[K.desc] ||'':'').trim();
-    if(!uni||uni.length<3)return;
-    if(!desc)return;
-    var uCan  =canonical(uni);
-    var uNorm =nrm(uni);
-    var uid   =uid_(uni,blc,pav,sub,desc);
-    dados.push([
-      (K.ord?row[K.ord]||'':'').trim(),
-      uCan,
-      uNorm,
-      blc,
-      pav,
-      (K.tag ?row[K.tag] ||'':'').trim(),
-      sub,
-      desc,
-      (K.aval?row[K.aval]||'':'').trim(),
-      (K.adeq?row[K.adeq]||'':'').trim(),
-      (K.inad?row[K.inad]||'':'').trim(),
-      (K.pend?row[K.pend]||'':'').trim(),
-      (K.obs ?row[K.obs] ||'':'').trim(),
-      uid
-    ]);
-    if(!uSet[uCan]){uSet[uCan]=true;unicas.push(uCan);}
-  });
-  unicas.sort();
-  return{dados:dados,unidadesUnicas:unicas};
-}
-
-// ─── Carregar (SheetDB + GAS status) ─────────────────────
+// ─── Carregar dados do GAS ───────────────────────────────
 async function carregar(u){
   if(u===undefined)u=document.getElementById('u').value.trim();
   invCache();invRsCache();carregarStatus();
-
   var snet=document.getElementById('snet');
   var bcache=document.getElementById('bcache');
 
   if(!navigator.onLine){
     var cached=carregarCacheDB();
-    if(cached&&cached.length>1){
-      DB=cached;
+    if(cached&&cached.dados&&cached.dados.length>1){
+      DB=cached.dados;STATUS=Object.assign(STATUS,cached.ultimosStatus||{});
       if(bcache)bcache.classList.add('vis');
       if(snet){snet.textContent='📦 OFFLINE';snet.className='snet offline';}
-      popularFiltros([]);renderLista();updContadores();
+      popularFiltros(cached.unidadesUnicas||[]);
+      renderLista();updContadores();
       if(u)carregarHist(u);
-      toast('📦 Offline — dados do cache local.');
+      toast('📦 Offline — usando cache local.');
     }else{
-      DB=[];popularFiltros([]);renderLista();
-      toast('🔴 Offline e sem cache. Conecte-se primeiro.',5000);
+      if(snet){snet.textContent='🔴 OFFLINE';snet.className='snet offline';}
+      toast('🔴 Sem conexão e sem cache.',5000);
     }
     return;
   }
 
   if(snet){snet.textContent='⏳ Carregando...';snet.className='snet online';}
-  toast('⏳ Carregando dados da planilha...');
+  toast('⏳ Carregando planilha...');
 
   try{
-    // 1. Puxa BASE DE DADOS do SheetDB
-    var sheetResult=await callSheetDB();
-    DB=sheetResult.dados;
-    salvarCacheDB(DB);
+    var r=await callGas('puxarDadosBase',{unidade:u||''});
+    DB     = r.dados          ||[];
+    STATUS = Object.assign(STATUS,r.ultimosStatus||{});
+    var unicas = r.unidadesUnicas||[];
+    salvarStatus();
+    salvarCacheDB({dados:DB,ultimosStatus:r.ultimosStatus||{},unidadesUnicas:unicas});
     if(bcache)bcache.classList.remove('vis');
-
-    // 2. Puxa STATUS do GAS (em paralelo, não bloqueia a UI)
-    callGas('obterTodosUltimosStatus').then(function(st){
-      if(st&&typeof st==='object'){
-        // Mescla status do GAS com STATUS local
-        Object.keys(st).forEach(function(k){STATUS[k]=st[k];});
-        salvarStatus();
-        invRsCache();
-        renderLista();
-        updContadores();
-      }
-    }).catch(function(e){
-      console.warn('Não foi possível carregar status do GAS:',e.message);
-    });
-
-    popularFiltros(sheetResult.unidadesUnicas);
-    renderLista();
-    updContadores();
+    popularFiltros(unicas);
+    renderLista();updContadores();
     if(u)carregarHist(u);
-
+    updHoje();
     if(snet){snet.textContent='🌐 ONLINE';snet.className='snet online';}
-    toast('✅ '+(DB.length-1)+' itens carregados!');
+    toast('✅ '+(DB.length>1?DB.length-1:0)+' itens carregados!');
   }catch(e){
-    console.error('Erro ao carregar:',e);
+    console.error('Erro carregar:',e);
     var cached=carregarCacheDB();
-    if(cached&&cached.length>1){
-      DB=cached;
+    if(cached&&cached.dados&&cached.dados.length>1){
+      DB=cached.dados;STATUS=Object.assign(STATUS,cached.ultimosStatus||{});
       if(bcache)bcache.classList.add('vis');
       if(snet){snet.textContent='📦 CACHE';snet.className='snet offline';}
-      toast('⚠️ Erro no servidor — usando cache local.',4000);
+      popularFiltros(cached.unidadesUnicas||[]);
+      renderLista();updContadores();
+      toast('⚠️ Erro — usando cache local.',4000);
     }else{
-      DB=[];
-      toast('❌ Erro ao carregar: '+e.message,5000);
+      if(snet){snet.textContent='❌ ERRO';snet.className='snet offline';}
+      toast('❌ Erro: '+e.message,6000);
     }
-    popularFiltros([]);renderLista();updContadores();
   }
 }
 
-// ─── Popular filtros ──────────────────────────────────────
+// ─── Filtros / datalists ─────────────────────────────────
 function popularFiltros(unicas){
   var ul=document.getElementById('lu'),bl=document.getElementById('lb');
   var pl=document.getElementById('lpav'),sl=document.getElementById('lsub');
   ul.innerHTML='';bl.innerHTML='';pl.innerHTML='';sl.innerHTML='';
-
-  (unicas||[]).forEach(function(u){
-    ul.innerHTML+='<option value="'+esc(u)+'">';
+  (unicas||[]).forEach(function(u){ul.innerHTML+='<option value="'+esc(u)+'">';});
+  var bS={},pS={},sS={};
+  DB.slice(1).forEach(function(r){
+    var b=(r[DI.BLC]||'').trim();if(b)bS[b]=1;
+    var p=(r[DI.PAV]||'').trim();if(p)pS[p]=1;
+    var s=(r[DI.SUB]||'').trim();if(s)sS[s]=1;
   });
-
-  var bSet={},pSet={},sSet={};
-  DB.slice(1).forEach(function(row){
-    var b=(row[DI.BLC]||'').trim();if(b)bSet[b]=1;
-    var p=(row[DI.PAV]||'').trim();if(p)pSet[p]=1;
-    var s=(row[DI.SUB]||'').trim();if(s)sSet[s]=1;
-  });
-  Object.keys(bSet).sort().forEach(function(v){bl.innerHTML+='<option value="'+esc(v)+'">';});
-  Object.keys(pSet).sort().forEach(function(v){pl.innerHTML+='<option value="'+esc(v)+'">';});
-  Object.keys(sSet).sort().forEach(function(v){sl.innerHTML+='<option value="'+esc(v)+'">';});
-
+  Object.keys(bS).sort().forEach(function(v){bl.innerHTML+='<option value="'+esc(v)+'">';});
+  Object.keys(pS).sort().forEach(function(v){pl.innerHTML+='<option value="'+esc(v)+'">';});
+  Object.keys(sS).sort().forEach(function(v){sl.innerHTML+='<option value="'+esc(v)+'">';});
   var sf=lsGet(LS_FILTROS)||{};
   document.getElementById('resp').value=sf.resp||'';
   document.getElementById('u').value   =sf.u   ||'';
@@ -350,27 +253,30 @@ function popularFiltros(unicas){
   document.getElementById('fst').value =sf.fst ||'NAO_AVALIADOS';
   ['resp','u','b','pav','sub'].forEach(mkpre);
 }
-function mkpre(id){var el=document.getElementById(id);if(el)el.classList.toggle('ok',el.value.trim()!=='');}
+function mkpre(id){
+  var el=document.getElementById(id);
+  if(el)el.classList.toggle('ok',el.value.trim()!=='');
+}
 function savFilt(){
   lsSet(LS_FILTROS,{
-    resp:document.getElementById('resp').value.trim(),
-    u:document.getElementById('u').value.trim(),
-    b:document.getElementById('b').value.trim(),
-    pav:document.getElementById('pav').value.trim(),
-    sub:document.getElementById('sub').value.trim(),
-    fst:document.getElementById('fst').value
+    resp:(document.getElementById('resp')||{value:''}).value.trim(),
+    u   :(document.getElementById('u')   ||{value:''}).value.trim(),
+    b   :(document.getElementById('b')   ||{value:''}).value.trim(),
+    pav :(document.getElementById('pav') ||{value:''}).value.trim(),
+    sub :(document.getElementById('sub') ||{value:''}).value.trim(),
+    fst :(document.getElementById('fst') ||{value:'NAO_AVALIADOS'}).value
   });
   ['resp','u','b','pav','sub'].forEach(mkpre);
 }
 
-// ─── Itens filtrados ──────────────────────────────────────
+// ─── Itens filtrados ─────────────────────────────────────
 var _ci=null,_cc='';
 function invCache(){_ci=null;_cc='';}
 function getItens(){
-  var uv=nrmU(document.getElementById('u').value);
-  var bv=nrm(document.getElementById('b').value);
-  var pv=nrm(document.getElementById('pav').value);
-  var sv=nrm(document.getElementById('sub').value);
+  var uv=nrmU((document.getElementById('u')||{value:''}).value);
+  var bv=nrm((document.getElementById('b')||{value:''}).value);
+  var pv=nrm((document.getElementById('pav')||{value:''}).value);
+  var sv=nrm((document.getElementById('sub')||{value:''}).value);
   if(!uv)return[];
   var ch=uv+'|'+bv+'|'+pv+'|'+sv;
   if(_cc===ch&&_ci)return _ci;
@@ -385,27 +291,29 @@ function getItens(){
   return _ci;
 }
 
-// ─── Filtros rápidos ──────────────────────────────────────
+// ─── Filtros rápidos ─────────────────────────────────────
 var _dt=null;
 function updCDebounced(){clearTimeout(_dt);_dt=setTimeout(updContadores,80);}
 function filtroReaval(){
   if(!document.getElementById('u').value.trim()){toast('Selecione uma unidade.',3000);return;}
   document.getElementById('fst').value='AVALIADOS_OK';
   savFilt();renderLista();updContadores();
-  window.scrollTo({top:document.getElementById('lista').offsetTop-20,behavior:'smooth'});
 }
 function filtroNA(){
   if(!document.getElementById('u').value.trim()){toast('Selecione uma unidade.',3000);return;}
   document.getElementById('fst').value='NA_PENDENTES';
   savFilt();renderLista();updContadores();
-  window.scrollTo({top:document.getElementById('lista').offsetTop-20,behavior:'smooth'});
 }
 
-// ─── Marcar status ────────────────────────────────────────
+// ─── Marcar status ───────────────────────────────────────
 function marcar(uid,v,uni,bl,pav,amb,desc,tipo){
   delete _rsCache[uid];
   var s=SEL.find(function(x){return x.uid===uid;});
-  if(!s){s={uid:uid,v:'',obs:'',achados:[],p:desc,amb:amb,pav:pav,fotos:[],tipo:tipo,unidade:uni,bloco:bl};SEL.push(s);}
+  if(!s){
+    s={uid:uid,v:'',obs:'',achados:[],p:desc,amb:amb,pav:pav,
+       fotos:[],tipo:tipo,unidade:uni,bloco:bl};
+    SEL.push(s);
+  }
   s.v=v;
   var card=document.querySelector('.ic[data-uid="'+uid+'"]');
   if(card){
@@ -417,104 +325,134 @@ function marcar(uid,v,uni,bl,pav,amb,desc,tipo){
     card.classList.remove('inad','ina','ior');
     if(v==='Inadequado')card.classList.add('inad');
     else if(v==='N/A')card.classList.add('ina');
+    else if(v==='Ok'&&precisaReaval(uid))card.classList.add('ior');
+
     var sf=document.getElementById('fst').value;
     var out=(sf==='NAO_AVALIADOS'&&(v==='Ok'||v==='Inadequado'||v==='N/A'))||
-            (sf==='INADEQUACOES'&&v==='Ok')||(sf==='NA_PENDENTES'&&v==='Ok');
+            (sf==='INADEQUACOES'&&v==='Ok')||
+            (sf==='NA_PENDENTES'&&v==='Ok');
     if(out){
       card.classList.add('out');
-      card.addEventListener('transitionend',function(){card.remove();updCDebounced();updPBar();},{once:true});
+      card.addEventListener('transitionend',function(){
+        card.remove();updCDebounced();updPBar();
+      },{once:true});
     }else{updCDebounced();updPBar();}
   }else{invCache();renderLista();updCDebounced();}
 }
 
-// ─── HTML helpers ─────────────────────────────────────────
+// ─── HTML helpers ────────────────────────────────────────
 function thumbH(uid,i,src){
   var ua=uid?(' data-uid="'+esc(uid)+'"'):'';
-  return '<div class="thumb"><img src="'+esc(src)+'" alt="Foto '+i+'">'+
+  return '<div class="thumb"><img src="'+esc(src)+'" alt="Foto">'+
     '<button class="tdel"'+ua+' data-idx="'+i+'" title="Remover">×</button></div>';
 }
 function cardSubHTML(sub){
-  var h=FSUB.map(function(f,i){return thumbH('',i,f.b64);}).join('');
-  return '<div class="csubfoto"><div class="slbl">📷 Fotos do Subambiente: '+esc(sub)+'</div>'+
-    '<div class="galeria" id="gsub">'+h+'</div>'+
-    '<div class="bfoto" data-uid="">📸 Adicionar Foto do Subambiente</div></div>';
+  return '<div class="csubfoto">'+
+    '<div class="slbl">📷 Fotos do subambiente: '+esc(sub)+'</div>'+
+    '<div class="galeria" id="gsub">'+
+      FSUB.map(function(f,i){return thumbH('',i,f.b64);}).join('')+
+    '</div>'+
+    '<div class="bfoto" data-uid="">📸 Adicionar foto do subambiente</div>'+
+  '</div>';
 }
 function progBarHTML(todos,sub){
   var its=todos.filter(function(r){return(r[DI.SUB]||'Sem Subambiente')===sub;});
   var total=its.length;if(!total)return'';
   var ok=0,nk=0,na=0;
-  its.forEach(function(it){var s=resStatus(it);if(s==='Ok')ok++;else if(s==='Inadequado')nk++;else if(s==='N/A')na++;});
+  its.forEach(function(it){
+    var s=resStatus(it);
+    if(s==='Ok')ok++;else if(s==='Inadequado')nk++;else if(s==='N/A')na++;
+  });
   var av=ok+nk+na,pct=total>0?(av/total)*100:0;
-  return '<div class="progwrap"><div class="progbg"><div class="progfill" style="width:'+pct.toFixed(0)+'%"></div></div>'+
-    '<div class="proglbl">'+av+' de '+total+' avaliados ('+pct.toFixed(0)+'%) — ✅'+ok+' ok · ❌'+nk+' inad. · ⚫'+na+' N/A · ⏳'+(total-av)+' faltando</div></div>';
+  return '<div class="progwrap">'+
+    '<div class="progbg"><div class="progfill" style="width:'+pct.toFixed(0)+'%"></div></div>'+
+    '<div class="proglbl">'+av+'/'+total+' avaliados ('+pct.toFixed(0)+'%) — '+
+    '✅'+ok+' · ❌'+nk+' · ⚫'+na+' · ⏳'+(total-av)+'</div>'+
+  '</div>';
 }
 function cardH(item,idx){
   var uni=item[DI.UNI]||'',bl=item[DI.BLC]||'',pav=item[DI.PAV]||'';
   var amb=item[DI.SUB]||'',desc=item[DI.DESC]||'',uid=item[DI.UID];
   var st=resStatus(item);
   var sl=SEL.find(function(x){return x.uid===uid;});
-  var obsH=(STATUS[uid]&&STATUS[uid].obs)?STATUS[uid].obs:String(item[DI.OBS]||'').trim();
-  var achH=(STATUS[uid]&&STATUS[uid].achados)?STATUS[uid].achados:'';
-  var pendH=String(item[DI.PEND]||'').trim();
-  var dtAv=(STATUS[uid]&&STATUS[uid].dataUltimaAval)?STATUS[uid].dataUltimaAval:'';
+  var obs=(STATUS[uid]&&STATUS[uid].obs)||String(item[DI.OBS]||'').trim();
+  var ach=(STATUS[uid]&&STATUS[uid].achados)||'';
+  var pend=String(item[DI.PEND]||'').trim();
+  var dtAv=(STATUS[uid]&&STATUS[uid].dataUltimaAval)||'';
   var isOk=st==='Ok',isIN=st==='Inadequado',isNA=st==='N/A';
-  var hasA=pendH||obsH||achH;
   var prR=isOk&&precisaReaval(uid),mp=mesesDesde(uid);
-  var cls='ic';
-  if(isNA)cls+=' ina';
-  else if(isIN||hasA)cls+=' inad';
-  else if(isOk&&prR)cls+=' ior';
-  var hHtml='';
-  if(hasA){
-    hHtml='<div class="hbox">'+
-      (pendH?'<div>📋 <b>Pendência:</b> '+esc(pendH)+'</div>':'')+
-      (obsH?'<div>💬 <b>Última Obs:</b> '+esc(obsH)+'</div>':'')+
-      (achH?'<div>🔎 <b>Achados:</b> '+esc(achH)+'</div>':'')+
-    '</div>';
-  }
-  var rvB=prR?'<div class="breavbadge">🔄 Reavaliação vencida'+(mp!==null?' ('+mp+'m atrás)':'')+'</div>':
-    (isOk&&dtAv?'<div style="font-size:11px;color:var(--text2);margin-bottom:6px;">✅ Avaliado em '+esc(dtAv)+'</div>':'');
-  var naB=isNA?'<div class="bnabadge">⚫ N/A — Retornar</div>':'';
-  var fH=(sl&&sl.fotos)?sl.fotos.map(function(f,i){return thumbH(uid,i,f.b64);}).join(''):'';
+  var cls='ic'+(isNA?' ina':isIN?' inad':(isOk&&prR)?' ior':'');
+  var achSel=sl&&sl.achados?sl.achados:(ach?ach.split(', ').filter(Boolean):[]);
   var obsV=sl?esc(sl.obs||''):'';
-  var achSel=(sl&&sl.achados)?sl.achados:(achH?achH.split(', ').filter(Boolean):[]);
-  var chipsH=ACHADOS.map(function(a){
-    var at=achSel.indexOf(a)>=0?' sel':'';
-    return '<span class="chip'+at+'" data-uid="'+esc(uid)+'" data-ach="'+esc(a)+'">'+esc(a)+'</span>';
-  }).join('');
+  var fH=sl&&sl.fotos?sl.fotos.map(function(f,i){return thumbH(uid,i,f.b64);}).join(''):'';
   var si=isOk?'✅':isIN?'❌':isNA?'⚫':'⬜';
   var aOk=isOk?'aok':'',aNk=isIN?'ank':'',aNa=isNA?'ana':'';
   var tipo=isIN?'Inadequado':isNA?'N/A':isOk?'Adequado':'Normal';
-  return '<div class="'+cls+'" data-uid="'+esc(uid)+'">'+
-    '<div class="ihr"><div class="inum">'+(idx+1)+'</div>'+
-    '<div class="iinf"><div class="iloc">'+esc(pav)+' › '+esc(amb)+'</div>'+
-    '<div class="idesc">'+esc(desc)+'</div></div>'+
-    '<span class="sicon" style="font-size:18px;color:var(--text2);margin-left:8px;flex-shrink:0;">'+si+'</span></div>'+
+  var hHtml='';
+  if(pend||obs||ach){
+    hHtml='<div class="hbox">'+
+      (pend?'<div>📋 <b>Pendência:</b> '+esc(pend)+'</div>':'')+
+      (obs ?'<div>💬 <b>Última obs:</b> '+esc(obs)+'</div>':'')+
+      (ach ?'<div>🔎 <b>Achados:</b> '+esc(ach)+'</div>':'')+
+    '</div>';
+  }
+  var rvB=prR?'<div class="breavbadge">🔄 Reavaliação vencida'+(mp!==null?' ('+mp+'m)':'')+'</div>':
+    (isOk&&dtAv?'<div style="font-size:11px;color:var(--text2);margin-bottom:6px">✅ Avaliado em '+esc(dtAv)+'</div>':'');
+  var naB=isNA?'<div class="bnabadge">⚫ N/A — Retornar</div>':'';
+  var chips=ACHADOS.map(function(a){
+    return '<span class="chip'+(achSel.indexOf(a)>=0?' sel':'')+
+      '" data-uid="'+esc(uid)+'" data-ach="'+esc(a)+'">'+esc(a)+'</span>';
+  }).join('');
+  return '<div class="'+cls+'" data-uid="'+esc(uid)+'">' +
+    '<div class="ihr">'+
+      '<div class="inum">'+(idx+1)+'</div>'+
+      '<div class="iinf">'+
+        '<div class="iloc">'+esc(pav)+' › '+esc(amb)+'</div>'+
+        '<div class="idesc">'+esc(desc)+'</div>'+
+      '</div>'+
+      '<span class="sicon">'+si+'</span>'+
+    '</div>'+
     rvB+naB+hHtml+
     '<div class="bgrp">'+
-      '<button class="bopt '+aOk+'" data-v="Ok" data-uid="'+esc(uid)+'" data-uni="'+esc(uni)+'" data-bl="'+esc(bl)+'" data-pav="'+esc(pav)+'" data-amb="'+esc(amb)+'" data-desc="'+esc(desc)+'" data-tipo="'+tipo+'">✅ OK</button>'+
-      '<button class="bopt '+aNk+'" data-v="Inadequado" data-uid="'+esc(uid)+'" data-uni="'+esc(uni)+'" data-bl="'+esc(bl)+'" data-pav="'+esc(pav)+'" data-amb="'+esc(amb)+'" data-desc="'+esc(desc)+'" data-tipo="'+tipo+'">❌ INADEQUADO</button>'+
-      '<button class="bopt '+aNa+'" data-v="N/A" data-uid="'+esc(uid)+'" data-uni="'+esc(uni)+'" data-bl="'+esc(bl)+'" data-pav="'+esc(pav)+'" data-amb="'+esc(amb)+'" data-desc="'+esc(desc)+'" data-tipo="'+tipo+'">⚫ N/A</button>'+
+      '<button class="bopt '+aOk+'" data-v="Ok" data-uid="'+esc(uid)+'"'+
+        ' data-uni="'+esc(uni)+'" data-bl="'+esc(bl)+'" data-pav="'+esc(pav)+'"'+
+        ' data-amb="'+esc(amb)+'" data-desc="'+esc(desc)+'" data-tipo="'+tipo+'">✅ OK</button>'+
+      '<button class="bopt '+aNk+'" data-v="Inadequado" data-uid="'+esc(uid)+'"'+
+        ' data-uni="'+esc(uni)+'" data-bl="'+esc(bl)+'" data-pav="'+esc(pav)+'"'+
+        ' data-amb="'+esc(amb)+'" data-desc="'+esc(desc)+'" data-tipo="'+tipo+'">❌ INADEQUADO</button>'+
+      '<button class="bopt '+aNa+'" data-v="N/A" data-uid="'+esc(uid)+'"'+
+        ' data-uni="'+esc(uni)+'" data-bl="'+esc(bl)+'" data-pav="'+esc(pav)+'"'+
+        ' data-amb="'+esc(amb)+'" data-desc="'+esc(desc)+'" data-tipo="'+tipo+'">⚫ N/A</button>'+
     '</div>'+
-    '<div class="achw"><span class="achl">🔍 O que foi encontrado?</span>'+
-      '<div class="achg">'+chipsH+'</div></div>'+
-    '<div class="obsw"><textarea data-uid="'+esc(uid)+'" placeholder="Observações adicionais..." rows="3">'+obsV+'</textarea>'+
-      '<button class="bmic" data-muid="'+esc(uid)+'">🎙️</button></div>'+
+    '<div class="achw">'+
+      '<span class="achl">🔍 O que foi encontrado?</span>'+
+      '<div class="achg">'+chips+'</div>'+
+    '</div>'+
+    '<div class="obsw">'+
+      '<textarea data-uid="'+esc(uid)+'" placeholder="Observações..." rows="3">'+obsV+'</textarea>'+
+      '<button class="bmic" data-muid="'+esc(uid)+'">🎙️</button>'+
+    '</div>'+
     '<div class="galeria" id="g'+esc(uid)+'">'+fH+'</div>'+
-    '<div class="bfoto" data-uid="'+esc(uid)+'">📸 Adicionar Foto</div>'+
+    '<div class="bfoto" data-uid="'+esc(uid)+'">📸 Adicionar foto</div>'+
   '</div>';
 }
 
-// ─── Render lista ─────────────────────────────────────────
+// ─── Render lista ────────────────────────────────────────
 function renderLista(){
   var lista=document.getElementById('lista');
-  var u=document.getElementById('u').value.trim();
-  var sub=document.getElementById('sub').value.trim();
-  var sf=document.getElementById('fst').value;
+  if(!lista)return;
+  var u=(document.getElementById('u')||{value:''}).value.trim();
+  var sub=(document.getElementById('sub')||{value:''}).value.trim();
+  var sf=(document.getElementById('fst')||{value:'NAO_AVALIADOS'}).value;
   lista.innerHTML='';
-  if(!u){lista.innerHTML='<div class="empty" style="text-align:center;padding:40px;color:var(--text2);">🏢 Selecione uma unidade para começar.</div>';return;}
-  if(DB.length<=1){lista.innerHTML='<div class="empty" style="text-align:center;padding:40px;color:var(--text2);">⏳ Carregando dados...</div>';return;}
-
+  if(!u){
+    lista.innerHTML='<div class="empty">🏢 Selecione uma unidade para começar.</div>';
+    return;
+  }
+  if(DB.length<=1){
+    lista.innerHTML='<div class="empty">⏳ Carregando dados...</div>';
+    return;
+  }
   var todos=getItens(),subMap={},statusCache={};
   todos.forEach(function(it){
     var s=resStatus(it);statusCache[it[DI.UID]]=s;
@@ -522,31 +460,27 @@ function renderLista(){
     var ck=bl+'|'+pv+'|'+ns;
     if(!subMap[ck])subMap[ck]={total:0,ok:0,nk:0,na:0,naoAv:0,itens:[],bloco:bl,pav:pv,sub:ns};
     var d=subMap[ck];d.total++;d.itens.push(it);
-    if(s==='Ok')d.ok++;else if(s==='Inadequado')d.nk++;else if(s==='N/A')d.na++;else d.naoAv++;
+    if(s==='Ok')d.ok++;else if(s==='Inadequado')d.nk++;
+    else if(s==='N/A')d.na++;else d.naoAv++;
   });
-
   var parts=[];
-
   if(sub){
     parts.push(cardSubHTML(sub));
     parts.push(progBarHTML(todos,sub));
     var its=todos.filter(function(it){return(it[DI.SUB]||'Sem Subambiente')===sub;});
-    if(!its.length){parts.push('<div class="empty" style="text-align:center;padding:20px;color:var(--text2);">Nenhum item para "'+esc(sub)+'".</div>');}
-    else{
-      var filt=its.filter(function(it){
-        var s=statusCache[it[DI.UID]];
-        if(sf==='NAO_AVALIADOS')return s==='Nao Avaliado';
-        if(sf==='INADEQUACOES') return s==='Inadequado';
-        if(sf==='NA_PENDENTES') return s==='N/A';
-        if(sf==='AVALIADOS_OK') return s==='Ok';
-        return true;
-      });
-      if(!filt.length){
-        parts.push('<div class="empty" style="text-align:center;padding:20px;color:var(--success);">✅ Nenhum item pendente neste filtro!</div>');
-      }else{
-        parts.push('<div style="font-size:13px;color:var(--text2);margin-bottom:12px;padding:8px 12px;background:#e8f0fe;border-radius:12px;">📋 <strong>'+filt.length+' item(ns)</strong> encontrado(s).</div>');
-        filt.forEach(function(it,i){parts.push(cardH(it,i));});
-      }
+    var filt=its.filter(function(it){
+      var s=statusCache[it[DI.UID]];
+      if(sf==='NAO_AVALIADOS')return s==='Nao Avaliado';
+      if(sf==='INADEQUACOES') return s==='Inadequado';
+      if(sf==='NA_PENDENTES') return s==='N/A';
+      if(sf==='AVALIADOS_OK') return s==='Ok';
+      return true;
+    });
+    if(!filt.length){
+      parts.push('<div class="empty">✅ Nenhum item pendente neste filtro.</div>');
+    }else{
+      parts.push('<div class="infobanner">📋 '+filt.length+' item(ns) encontrado(s).</div>');
+      filt.forEach(function(it,i){parts.push(cardH(it,i));});
     }
   }else{
     var subs=Object.keys(subMap).sort(function(a,b){
@@ -571,21 +505,30 @@ function renderLista(){
         AVALIADOS_OK:'Nenhum item OK. Avalie os itens primeiro.',
         TUDO:'✅ Nenhuma pendência!'
       };
-      parts.push('<div class="empty" style="text-align:center;padding:40px;color:var(--success);">'+(msgs[sf]||'Nenhum item.')+'</div>');
+      parts.push('<div class="empty">'+(msgs[sf]||'Nenhum item.')+'</div>');
     }else{
-      var inadS=filtSubs.filter(function(k){return subMap[k].nk>0;});
-      if(inadS.length&&(sf==='INADEQUACOES'||sf==='TUDO'||sf==='NAO_AVALIADOS')){
+      // Inadequações
+      var inaS=filtSubs.filter(function(k){return subMap[k].nk>0;});
+      if(inaS.length&&(sf==='INADEQUACOES'||sf==='TUDO'||sf==='NAO_AVALIADOS')){
         parts.push('<h2 class="stit" style="color:var(--danger);">❌ INADEQUAÇÕES PENDENTES</h2>');
-        inadS.forEach(function(k){
+        inaS.forEach(function(k){
           var d=subMap[k];
           var ex=d.itens.find(function(it){return statusCache[it[DI.UID]]==='Inadequado';})||d.itens[0];
           var dn=(d.bloco?d.bloco+' - ':'')+(d.pav?d.pav+' - ':'')+d.sub;
-          parts.push('<div class="cig" data-uni="'+esc(ex[DI.UNI])+'" data-bl="'+esc(d.bloco)+'" data-pav="'+esc(d.pav)+'" data-sub="'+esc(d.sub)+'" data-filt="INADEQUACOES">'+
-            '<div><div style="font-weight:700;font-size:16px;color:var(--danger);">'+esc(dn)+'</div>'+
-            '<div style="font-size:13px;color:var(--text2);margin-top:4px;"><span style="color:var(--danger);">❌ '+d.nk+' inad.</span> • <span>📋 '+d.total+' total</span></div></div>'+
-            '<span style="font-size:20px;">›</span></div>');
+          var vis=d.ok+d.nk+d.na,flt=d.total-vis;
+          parts.push(
+            '<div class="cig" data-uni="'+esc(ex[DI.UNI])+'" data-bl="'+esc(d.bloco)+
+            '" data-pav="'+esc(d.pav)+'" data-sub="'+esc(d.sub)+'" data-filt="INADEQUACOES">'+
+              '<div><div style="font-weight:700;font-size:16px;color:var(--danger);">'+esc(dn)+'</div>'+
+              '<div style="font-size:13px;color:var(--text2);margin-top:4px;">'+
+                '<span style="color:var(--danger);">❌ '+d.nk+' inad.</span> • '+
+                '<span style="color:var(--primary);">📋 '+vis+' visit.</span> • '+
+                '<span style="color:var(--warning);">⏳ '+flt+' falt.</span>'+
+              '</div></div><span style="font-size:20px;color:var(--danger);">›</span></div>'
+          );
         });
       }
+      // N/A
       var naS=filtSubs.filter(function(k){return subMap[k].na>0;});
       if(naS.length&&(sf==='NA_PENDENTES'||sf==='TUDO'||sf==='NAO_AVALIADOS')){
         parts.push('<h2 class="stit" style="color:var(--na);">⚫ N/A — RETORNAR</h2>');
@@ -593,12 +536,20 @@ function renderLista(){
           var d=subMap[k];
           var ex=d.itens.find(function(it){return statusCache[it[DI.UID]]==='N/A';})||d.itens[0];
           var dn=(d.bloco?d.bloco+' - ':'')+(d.pav?d.pav+' - ':'')+d.sub;
-          parts.push('<div class="cng" data-uni="'+esc(ex[DI.UNI])+'" data-bl="'+esc(d.bloco)+'" data-pav="'+esc(d.pav)+'" data-sub="'+esc(d.sub)+'" data-filt="NA_PENDENTES">'+
-            '<div><div style="font-weight:700;font-size:16px;color:var(--na);">'+esc(dn)+'</div>'+
-            '<div style="font-size:13px;color:var(--text2);margin-top:4px;"><span style="color:var(--na);">⚫ '+d.na+' N/A</span> • <span>📋 '+d.total+' total</span></div></div>'+
-            '<span style="font-size:20px;">›</span></div>');
+          var vis=d.ok+d.nk+d.na,flt=d.total-vis;
+          parts.push(
+            '<div class="cng" data-uni="'+esc(ex[DI.UNI])+'" data-bl="'+esc(d.bloco)+
+            '" data-pav="'+esc(d.pav)+'" data-sub="'+esc(d.sub)+'" data-filt="NA_PENDENTES">'+
+              '<div><div style="font-weight:700;font-size:16px;color:var(--na);">'+esc(dn)+'</div>'+
+              '<div style="font-size:13px;color:var(--text2);margin-top:4px;">'+
+                '<span style="color:var(--na);">⚫ '+d.na+' N/A</span> • '+
+                '<span style="color:var(--primary);">📋 '+vis+' visit.</span> • '+
+                '<span style="color:var(--warning);">⏳ '+flt+' falt.</span>'+
+              '</div></div><span style="font-size:20px;color:var(--na);">›</span></div>'
+          );
         });
       }
+      // OK
       var okS=filtSubs.filter(function(k){return subMap[k].ok>0;});
       if(okS.length&&(sf==='AVALIADOS_OK'||sf==='TUDO')){
         parts.push('<h2 class="stit" style="color:var(--success);">🔄 AVALIADOS OK — REAVALIAR</h2>');
@@ -608,23 +559,37 @@ function renderLista(){
           var dn=(d.bloco?d.bloco+' - ':'')+(d.pav?d.pav+' - ':'')+d.sub;
           var venc=d.itens.filter(function(it){return statusCache[it[DI.UID]]==='Ok'&&precisaReaval(it[DI.UID]);}).length;
           var vB=venc>0?'<span style="background:#fef3e0;color:#92400e;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;margin-left:6px;">🔄 '+venc+' venc.</span>':'';
-          parts.push('<div class="cokl" data-uni="'+esc(ex[DI.UNI])+'" data-bl="'+esc(d.bloco)+'" data-pav="'+esc(d.pav)+'" data-sub="'+esc(d.sub)+'" data-filt="AVALIADOS_OK">'+
-            '<div><div style="font-weight:700;font-size:16px;color:var(--success);">'+esc(dn)+vB+'</div>'+
-            '<div style="font-size:13px;color:var(--text2);margin-top:4px;"><span style="color:var(--success);">✅ '+d.ok+' adeq.</span> • <span>📋 '+d.total+' total</span></div></div>'+
-            '<span style="font-size:20px;">›</span></div>');
+          parts.push(
+            '<div class="cokl" data-uni="'+esc(ex[DI.UNI])+'" data-bl="'+esc(d.bloco)+
+            '" data-pav="'+esc(d.pav)+'" data-sub="'+esc(d.sub)+'" data-filt="AVALIADOS_OK">'+
+              '<div><div style="font-weight:700;font-size:16px;color:var(--success);display:flex;align-items:center;flex-wrap:wrap;gap:4px;">'+esc(dn)+vB+'</div>'+
+              '<div style="font-size:13px;color:var(--text2);margin-top:4px;">'+
+                '<span style="color:var(--success);">✅ '+d.ok+' adeq.</span> • '+
+                '<span>📋 '+d.total+' total</span>'+
+              '</div></div><span style="font-size:20px;color:var(--success);">›</span></div>'
+          );
         });
       }
+      // Não avaliados
       var naS2=filtSubs.filter(function(k){return subMap[k].naoAv>0;});
       if(naS2.length&&(sf==='NAO_AVALIADOS'||sf==='TUDO')){
         parts.push('<h2 class="stit" style="color:var(--warning);">⬜ NÃO AVALIADOS</h2>');
+        parts.push('<div class="infobanner">📋 '+naS2.length+' subambiente(s) com itens não avaliados.</div>');
         naS2.forEach(function(k){
           var d=subMap[k];
           var ex=d.itens.find(function(it){return statusCache[it[DI.UID]]==='Nao Avaliado';})||d.itens[0];
           var dn=(d.bloco?d.bloco+' - ':'')+(d.pav?d.pav+' - ':'')+d.sub;
-          parts.push('<div class="cnv2" data-uni="'+esc(ex[DI.UNI])+'" data-bl="'+esc(d.bloco)+'" data-pav="'+esc(d.pav)+'" data-sub="'+esc(d.sub)+'" data-filt="NAO_AVALIADOS">'+
-            '<div><div style="font-weight:700;font-size:16px;color:var(--warning);">'+esc(dn)+'</div>'+
-            '<div style="font-size:13px;color:var(--text2);margin-top:4px;"><span style="color:var(--warning);">⬜ '+d.naoAv+' não aval.</span> • <span>📋 '+d.total+' total</span></div></div>'+
-            '<span style="font-size:20px;">›</span></div>');
+          var vis=d.ok+d.nk+d.na,flt=d.total-vis;
+          parts.push(
+            '<div class="cnv2" data-uni="'+esc(ex[DI.UNI])+'" data-bl="'+esc(d.bloco)+
+            '" data-pav="'+esc(d.pav)+'" data-sub="'+esc(d.sub)+'" data-filt="NAO_AVALIADOS">'+
+              '<div><div style="font-weight:700;font-size:16px;color:var(--warning);">'+esc(dn)+'</div>'+
+              '<div style="font-size:13px;color:var(--text2);margin-top:4px;">'+
+                '<span style="color:var(--warning);">⬜ '+d.naoAv+' não aval.</span> • '+
+                '<span style="color:var(--primary);">📋 '+vis+' visit.</span> • '+
+                '<span style="color:var(--warning);">⏳ '+flt+' falt.</span>'+
+              '</div></div><span style="font-size:20px;color:var(--warning);">›</span></div>'
+          );
         });
       }
     }
@@ -633,7 +598,7 @@ function renderLista(){
   renderGalerias();
 }
 
-// ─── Limpar filtros ───────────────────────────────────────
+// ─── Limpar filtros secundários ───────────────────────────
 function limparSecundarios(){
   document.getElementById('b').value='';
   document.getElementById('pav').value='';
@@ -641,7 +606,7 @@ function limparSecundarios(){
   savFilt();invCache();invRsCache();renderLista();updCDebounced();
 }
 
-// ─── Contadores ───────────────────────────────────────────
+// ─── Contadores / progresso ───────────────────────────────
 function updPG(){
   var u=document.getElementById('u').value.trim();
   var cp=document.getElementById('cpg');
@@ -745,7 +710,10 @@ function renderGal(uid,arr){
 }
 function removerFoto(uid,idx){
   if(!uid||uid===''){FSUB.splice(idx,1);renderGal('sub',FSUB);}
-  else{var sl=SEL.find(function(x){return x.uid===uid;});if(sl){sl.fotos.splice(idx,1);renderGal(uid,sl.fotos);}}
+  else{
+    var sl=SEL.find(function(x){return x.uid===uid;});
+    if(sl){sl.fotos.splice(idx,1);renderGal(uid,sl.fotos);}
+  }
   toast('🗑️ Foto removida.');
 }
 function renderGalerias(){
@@ -753,7 +721,7 @@ function renderGalerias(){
   SEL.forEach(function(sl){if(sl.fotos&&sl.fotos.length>0)renderGal(sl.uid,sl.fotos);});
 }
 
-// ─── Salvar ───────────────────────────────────────────────
+// ─── Salvar avaliações ───────────────────────────────────
 async function tentarSalvar(){
   var resp=document.getElementById('resp').value.trim();
   var u=document.getElementById('u').value.trim();
@@ -766,16 +734,24 @@ async function tentarSalvar(){
   var pacote={
     r:resp,u:u,b:b,sub:sub,
     fotosSubambiente:FSUB.map(function(f){return f.b64;}),
-    itens:its.map(function(s){return{pav:s.pav,amb:s.amb,p:s.p,v:s.v,obs:s.obs,
-      fotos:s.fotos.map(function(f){return f.b64;}),tipo:s.tipo,achados:(s.achados||[]).join(', ')};})
+    itens:its.map(function(s){return{
+      pav:s.pav,amb:s.amb,p:s.p,v:s.v,obs:s.obs,
+      fotos:s.fotos.map(function(f){return f.b64;}),tipo:s.tipo,
+      achados:(s.achados||[]).join(', ')
+    };})
   };
 
   var btn=document.getElementById('bsave');
   btn.textContent='💾 SALVANDO...';btn.disabled=true;
 
-  // Atualiza STATUS local imediatamente
+  // Atualiza STATUS local
   its.forEach(function(s){
-    STATUS[s.uid]={status:s.v.toUpperCase(),obs:s.obs||'',achados:(s.achados||[]).join(', '),dataUltimaAval:hojeStr()};
+    STATUS[s.uid]={
+      status:s.v.toUpperCase(),
+      obs:s.obs||'',
+      achados:(s.achados||[]).join(', '),
+      dataUltimaAval:hojeStr()
+    };
   });
   salvarStatus();
 
@@ -803,7 +779,7 @@ async function tentarSalvar(){
   }
 }
 
-// ─── CSV ──────────────────────────────────────────────────
+// ─── CSV ─────────────────────────────────────────
 async function baixarRelatorio(){
   toast('⏳ Gerando CSV...');
   try{
@@ -822,7 +798,7 @@ async function baixarRelatorio(){
   }catch(e){toast('❌ Erro CSV: '+e.message,5000);}
 }
 
-// ─── Histórico ────────────────────────────────────────────
+// ─── Histórico ───────────────────────────────────
 async function carregarHist(unidade){
   var card=document.getElementById('chist'),cont=document.getElementById('hcont');
   if(!card||!cont)return;
@@ -830,12 +806,174 @@ async function carregarHist(unidade){
   cont.innerHTML='<div class="hload">⏳ Carregando histórico...</div>';
   try{
     var d=await callGas('obterHistorico6Meses',{unidade:unidade});
-    if(!d||!d.meses||!d.meses.length){cont.innerHTML='<div class="hload">Nenhum registro nos últimos 6 meses.</div>';return;}
+    if(!d||!d.meses||!d.meses.length){
+      cont.innerHTML='<div class="hload">Nenhum registro nos últimos 6 meses.</div>';return;
+    }
     cont.innerHTML=buildHist(d,unidade);
-  }catch(e){cont.innerHTML='<div class="hload" style="color:var(--danger);">Erro ao carregar histórico.</div>';}
+  }catch(e){
+    cont.innerHTML='<div class="hload" style="color:var(--danger);">Erro ao carregar histórico.</div>';
+  }
 }
 function buildHist(d,unidade){
   var hoje=new Date(),uN=nrmU(unidade),ciclo=CICLOS[uN];
   var regraH=ciclo
-    ?'<div class="crcicloh"><b>📋 Ciclo:</b> '+ME[ciclo.i-1]+' a '+ME[ciclo.
+    ?'<div class="crcicloh"><b>📋 Ciclo:</b> '+ME[ciclo.i-1]+' a '+ME[ciclo.f-1]+'.</div>'
+    :'<div class="crcicloh"><b>📋 Regra:</b> Reavaliar a cada 6 meses.</div>';
+  var grid='<div class="hgrid">';
+  d.meses.forEach(function(m){
+    var isAt=m.mes===(hoje.getMonth()+1)&&m.ano===hoje.getFullYear();
+    grid+='<div class="mcard'+(isAt?' mat':'')+(m.subambientes===0?' mvaz':'')+'">'+
+      '<div class="mlbl">'+esc(m.label)+'</div>'+
+      '<div class="mnum">'+m.subambientes+'</div>'+
+      '<div class="mnuml">amb. visitados</div>'+
+      '<div class="mbadges">'+
+        '<span class="mb mbok">'+m.ok+' ok</span>'+
+        '<span class="mb mbinad">'+m.inadequados+' inad.</span>'+
+        '<span class="mb mbna">'+m.na+' N/A</span>'+
+      '</div>'+
+    '</div>';
+  });
+  grid+='</div>';
+  var bar='<div class="hbarwrap"><div class="hbarrow">'+
+    '<div class="hbarlbl">Cobertura</div>'+
+    '<div class="hbarbg"><div class="hbarfill" style="width:'+(d.percentualCobertura||0)+'%"></div></div>'+
+    '<div class="hbarcnt">'+(d.percentualCobertura||0).toFixed(0)+'%</div>'+
+  '</div></div>';
+  var resumo='<div class="hresumo">'+
+    '<div class="hri"><div class="hriv">'+d.totalSubambientes+'</div><div class="hril">Amb. únicos visitados</div></div>'+
+    '<div class="hri"><div class="hriv">'+d.totalVisitados+'</div><div class="hril">Total de registros</div></div>'+
+    '<div class="hri"><div class="hriv">'+d.totalInadequados+'</div><div class="hril">Reg. com inadequação</div></div>'+
+  '</div>';
+  return regraH+grid+bar+resumo;
+}
 
+// ─── Ambientes verificados hoje ──────────────────
+async function obterAmbientesVerificadosHoje(){
+  try{
+    var n=await callGas('obterAmbientesVerificadosHoje');
+    return n||0;
+  }catch(e){return 0;}
+}
+async function updHoje(){
+  var n=await obterAmbientesVerificadosHoje();
+  var el=document.getElementById('chj');if(el)el.textContent=n;
+}
+
+// ─── Voz (SpeechRecognition) ─────────────────────
+var SAPI=window.SpeechRecognition||window.webkitSpeechRecognition||null;
+var micUid=null,recObj=null;
+function iniciarVoz(uid){
+  if(!SAPI){toast('Sem suporte a voz neste navegador.',4000);return;}
+  if(micUid===uid){pararVoz();return;}
+  if(micUid!==null)pararVoz();
+  recObj=new SAPI();recObj.lang='pt-BR';recObj.interimResults=true;recObj.continuous=false;
+  var ta=document.querySelector('textarea[data-uid="'+uid+'"]');
+  var btn=document.querySelector('.bmic[data-muid="'+uid+'"]');
+  if(!ta||!btn)return;
+  btn.classList.add('rec');micUid=uid;
+  recObj.onresult=function(ev){
+    for(var i=ev.resultIndex;i<ev.results.length;i++)
+      if(ev.results[i].isFinal){ta.value+=ev.results[i][0].transcript+' ';onTA({target:ta});}
+  };
+  recObj.onend=function(){btn.classList.remove('rec');micUid=null;toast('🎙️ Finalizado.');};
+  recObj.onerror=function(ev){btn.classList.remove('rec');micUid=null;toast('Erro de voz: '+ev.error,4000);};
+  recObj.start();toast('🎙️ Ouvindo...');
+}
+function pararVoz(){
+  if(recObj){recObj.stop();recObj=null;}
+  var btn=document.querySelector('.bmic.rec');if(btn)btn.classList.remove('rec');
+  micUid=null;
+}
+
+// ─── Eventos ─────────────────────────────────────
+function onClick(e){
+  var t=e.target;
+
+  var bopt=t.closest&&t.closest('.bopt');
+  if(bopt){
+    e.preventDefault();
+    marcar(bopt.dataset.uid,bopt.dataset.v,bopt.dataset.uni,bopt.dataset.bl,
+           bopt.dataset.pav,bopt.dataset.amb,bopt.dataset.desc,bopt.dataset.tipo);
+    return;
+  }
+  var chip=t.closest&&t.closest('.chip');
+  if(chip){e.preventDefault();toggleAch(chip.dataset.uid,chip.dataset.ach);return;}
+  var bmic=t.closest&&t.closest('.bmic');
+  if(bmic){e.preventDefault();iniciarVoz(bmic.dataset.muid);return;}
+  var cnv2=t.closest&&t.closest('.cnv2');
+  if(cnv2){e.preventDefault();irParaSub(cnv2.dataset.uni,cnv2.dataset.bl,cnv2.dataset.pav,cnv2.dataset.sub,cnv2.dataset.filt||'TUDO');return;}
+  var cig=t.closest&&t.closest('.cig');
+  if(cig){e.preventDefault();irParaSub(cig.dataset.uni,cig.dataset.bl,cig.dataset.pav,cig.dataset.sub,cig.dataset.filt||'INADEQUACOES');return;}
+  var cng=t.closest&&t.closest('.cng');
+  if(cng){e.preventDefault();irParaSub(cng.dataset.uni,cng.dataset.bl,cng.dataset.pav,cng.dataset.sub,cng.dataset.filt||'NA_PENDENTES');return;}
+  var cokl=t.closest&&t.closest('.cokl');
+  if(cokl){e.preventDefault();irParaSub(cokl.dataset.uni,cokl.dataset.bl,cokl.dataset.pav,cokl.dataset.sub,cokl.dataset.filt||'AVALIADOS_OK');return;}
+  var bfoto=t.closest&&t.closest('.bfoto');
+  if(bfoto){e.preventDefault();var uid=bfoto.dataset.uid;FOTO_CTX=uid?{tipo:'item',uid:uid}:{tipo:'sub'};var ci=document.getElementById('camInput');ci.value='';ci.click();return;}
+  var tdel=t.closest&&t.closest('.tdel');
+  if(tdel){e.preventDefault();removerFoto(tdel.dataset.uid,parseInt(tdel.dataset.idx,10));return;}
+}
+function onTA(e){
+  var ta=e.target.closest?e.target.closest('textarea[data-uid]'):null;
+  if(!ta&&e.target&&e.target.dataset&&e.target.dataset.uid)ta=e.target;
+  if(!ta)return;
+  var uid=ta.dataset.uid;
+  var sl=SEL.find(function(x){return x.uid===uid;});
+  if(!sl){
+    var orig=DB.slice(1).find(function(it){return it[DI.UID]===uid;});if(!orig)return;
+    sl={uid:uid,v:'',obs:'',achados:[],p:orig[DI.DESC]||'',amb:orig[DI.SUB]||'',
+        pav:orig[DI.PAV]||'',fotos:[],tipo:'Normal',unidade:orig[DI.UNI]||'',bloco:orig[DI.BLC]||''};
+    SEL.push(sl);
+  }
+  sl.obs=ta.value;
+}
+function toggleAch(uid,ach){
+  var sl=SEL.find(function(x){return x.uid===uid;});
+  if(!sl){
+    var orig=DB.slice(1).find(function(it){return it[DI.UID]===uid;});if(!orig)return;
+    sl={uid:uid,v:'',obs:'',achados:[],p:orig[DI.DESC]||'',amb:orig[DI.SUB]||'',
+        pav:orig[DI.PAV]||'',fotos:[],tipo:'Normal',unidade:orig[DI.UNI]||'',bloco:orig[DI.BLC]||''};
+    SEL.push(sl);
+  }
+  if(!sl.achados)sl.achados=[];
+  var idx=sl.achados.indexOf(ach);
+  if(idx===-1)sl.achados.push(ach);else sl.achados.splice(idx,1);
+  document.querySelectorAll('.chip[data-uid="'+uid+'"]').forEach(function(c){
+    if(c.dataset.ach===ach)c.classList.toggle('sel',sl.achados.indexOf(ach)>=0);
+  });
+}
+function irParaSub(uni,bl,pav,sub,st){
+  document.getElementById('u').value=uni;
+  document.getElementById('b').value=bl;
+  document.getElementById('pav').value=pav;
+  document.getElementById('sub').value=sub;
+  document.getElementById('fst').value=st||'TUDO';
+  ['u','b','pav','sub'].forEach(mkpre);
+  savFilt();invCache();invRsCache();renderLista();updContadores();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+// ─── Init ─────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded',function(){
+  document.addEventListener('click',onClick);
+  document.addEventListener('change',function(e){
+    var ta=e.target;
+    if(ta.tagName==='TEXTAREA'&&ta.dataset.uid)onTA(e);
+  });
+  var ci=document.getElementById('camInput');
+  if(ci)ci.addEventListener('change',handleFotos);
+  ['u','b','pav','sub'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(!el)return;
+    el.addEventListener('change',function(){
+      savFilt();invCache();invRsCache();
+      if(id==='u')carregar();
+      else{renderLista();updCDebounced();}
+    });
+  });
+  var resp=document.getElementById('resp');
+  if(resp)resp.addEventListener('change',savFilt);
+  var fst=document.getElementById('fst');
+  if(fst)fst.addEventListener('change',function(){savFilt();invRsCache();renderLista();updCDebounced();});
+  carregar();
+});
