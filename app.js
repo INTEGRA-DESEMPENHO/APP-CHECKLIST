@@ -4,7 +4,7 @@
 ═══════════════════════════════════════════════════════ */
 
 // ─── CONFIGURAÇÃO — TROQUE PELA SUA URL DO GAS ───────────
-var GAS_URL = 'SUA_URL_GAS_AQUI'; 
+var GAS_URL = 'https://sheetdb.io/api/v1/p5kdwbijb335u'; 
 // Exemplo: 'https://script.google.com/macros/s/AKfycbXXXXXXXXXXXX/exec'
 
 // ─── Chaves localStorage ─────────────────────────────────
