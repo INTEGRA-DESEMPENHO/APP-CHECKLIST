@@ -2,22 +2,23 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
   <title>Vistoria Fênix v9</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div id="toast"></div>
+<div id="toast" class="toast"></div>
 <div class="wrap">
 
+  <!-- HEADER -->
   <div class="hcard">
     <div class="topbar">
       <div class="apptitle">Vistoria Fênix <span>v9</span></div>
       <div class="sg">
-        <div id="snet" class="snet online">🌐 ONLINE</div>
-        <div id="sfila" class="sfila">⏳ Fila: 0</div>
-        <button class="bcsv" onclick="baixarRelatorio()">📥 CSV HOJE</button>
+        <div id="snet" class="snet online">⏳ Carregando</div>
+        <div id="sfila" class="sfila" style="display:none">⏳ Fila: 0</div>
+        <button class="bcsv" onclick="baixarRelatorio()">📥 CSV</button>
       </div>
     </div>
     <div class="fg">
@@ -27,12 +28,12 @@
     <div class="gf">
       <div>
         <label>🏢 UNIDADE</label>
-        <input type="text" id="u" list="lu" placeholder="Digite ou selecione..." autocomplete="off">
+        <input type="text" id="u" list="lu" placeholder="Selecione..." autocomplete="off">
         <datalist id="lu"></datalist>
       </div>
       <div>
         <label>📦 BLOCO</label>
-        <input type="text" id="b" list="lb" placeholder="Digite ou selecione..." autocomplete="off">
+        <input type="text" id="b" list="lb" placeholder="Todos..." autocomplete="off">
         <datalist id="lb"></datalist>
       </div>
       <div>
@@ -51,50 +52,47 @@
           <option value="NAO_AVALIADOS">⬜ Não avaliados</option>
           <option value="INADEQUACOES">❌ Inadequações</option>
           <option value="NA_PENDENTES">⚫ N/A — Retornar</option>
-          <option value="AVALIADOS_OK">✅ Avaliados OK — Reavaliar</option>
-          <option value="TUDO">📋 Todos os itens</option>
+          <option value="AVALIADOS_OK">✅ OK — Reavaliar</option>
+          <option value="TUDO">📋 Todos</option>
         </select>
       </div>
     </div>
-    <button class="bclear" onclick="limparSecundarios()">Limpar Filtros (Bloco, Pav., Sub.)</button>
+    <button class="bclear" onclick="limparSecundarios()">🔄 Limpar Filtros</button>
   </div>
 
+  <!-- BANNER OFFLINE -->
   <div id="bcache" class="bcache">
-    📦 <strong>Modo offline</strong> — exibindo dados do cache local. Salve quando voltar online.
+    📦 <strong>Modo offline</strong> — dados do cache local.
   </div>
 
+  <!-- DASHBOARD -->
   <div class="dash">
-    <div class="cc"><span class="tt">Itens avaliados como adequados.</span>
-      <div class="cl">✅ ADEQUAÇÕES</div><div id="cok" class="cv cok">0</div></div>
-    <div class="cc"><span class="tt">Itens marcados como inadequados.</span>
-      <div class="cl">❌ INADEQUAÇÕES</div><div id="cnk" class="cv cnok">0</div></div>
-    <div class="cc"><span class="tt">Subambientes com pelo menos 1 item avaliado.</span>
-      <div class="cl">📋 AMB. AVALIADOS</div><div id="caa" class="cv ceval">0</div></div>
-    <div class="cc"><span class="tt">Subambientes iniciados com itens pendentes.</span>
-      <div class="cl">⏳ AMB. PENDENTES</div><div id="cap" class="cv cpend">0</div></div>
-    <div class="cc"><span class="tt">Subambientes que precisam de visita.</span>
-      <div class="cl">🚶 PARA VISITAR</div><div id="cav" class="cv cvis">0</div></div>
-    <div class="cc"><span class="tt">Subambientes únicos avaliados hoje.</span>
-      <div class="cl">📅 HOJE</div><div id="chj" class="cv choje">0</div></div>
-    <div class="cc"><span class="tt">Subambientes com pelo menos um inadequado.</span>
-      <div class="cl">⚠️ AMB. INAD.</div><div id="cai" class="cv ciamd">0</div></div>
-    <div class="cic"><span class="tt">Meta de subambientes/mês para o ciclo semestral.</span>
+    <div class="cc"><div class="cl">✅ ADEQUAÇÕES</div><div id="cok" class="cv cok">0</div></div>
+    <div class="cc"><div class="cl">❌ INADEQUAÇÕES</div><div id="cnk" class="cv cnok">0</div></div>
+    <div class="cc"><div class="cl">📋 AMB. AVALIADOS</div><div id="caa" class="cv ceval">0</div></div>
+    <div class="cc"><div class="cl">⏳ AMB. PENDENTES</div><div id="cap" class="cv cpend">0</div></div>
+    <div class="cc"><div class="cl">🚶 PARA VISITAR</div><div id="cav" class="cv cvis">0</div></div>
+    <div class="cc"><div class="cl">📅 HOJE</div><div id="chj" class="cv choje">0</div></div>
+    <div class="cc"><div class="cl">⚠️ AMB. INAD.</div><div id="cai" class="cv ciamd">0</div></div>
+    <div class="cic">
       <div class="cl">📆 AMB./MÊS CICLO</div>
       <div id="cam" class="cv cciclo">—</div>
-      <div id="cams" class="csub">Selecione uma unidade</div></div>
+      <div id="cams" class="csub">Selecione uma unidade</div>
+    </div>
     <div class="crv" onclick="filtroReaval()">
-      <span class="tt">Itens OK há mais de 6 meses. Clique para reavaliar.</span>
       <div class="cl">🔄 REAVAL. VENCIDAS</div>
       <div id="crvc" class="cv creaval">—</div>
-      <div id="crvs" class="csub">Selecione uma unidade</div></div>
-    <div class="cnv" onclick="filtroNA()">
-      <span class="tt">Itens N/A que precisam de revisão. Clique para ver.</span>
+      <div id="crvs" class="csub">Selecione uma unidade</div>
+    </div>
+    <div class="cnvcard" onclick="filtroNA()">
       <div class="cl">⚫ N/A PENDENTES</div>
       <div id="cnvc" class="cv cna">—</div>
-      <div id="cnvs" class="csub">Selecione uma unidade</div></div>
+      <div id="cnvs" class="csub">Selecione uma unidade</div>
+    </div>
   </div>
 
-  <div id="cpg" style="display:none" class="cpg">
+  <!-- PROGRESSO -->
+  <div id="cpg" class="cpg" style="display:none">
     <div class="pghead">
       <div class="pgtit">📊 PROGRESSO GERAL</div>
       <div id="pgt" class="pgtxt">0 / 0</div>
@@ -108,19 +106,22 @@
     </div>
   </div>
 
+  <!-- HISTÓRICO -->
   <div id="chist" class="chist">
-    <div class="htit">📅 HISTÓRICO DOS ÚLTIMOS 6 MESES</div>
+    <div class="htit">📅 HISTÓRICO — ÚLTIMOS 6 MESES</div>
     <div id="hcont"><div class="hload">Carregando...</div></div>
   </div>
 
+  <!-- LISTA PRINCIPAL -->
   <div id="lista"></div>
 </div>
 
+<!-- FOOTER SALVAR -->
 <div class="footer">
   <button id="bsave" class="bsave" onclick="tentarSalvar()">💾 SALVAR AVALIAÇÕES</button>
 </div>
-<input type="file" id="camInput" accept="image/*" capture="environment" multiple style="display:none">
 
+<input type="file" id="camInput" accept="image/*" capture="environment" multiple style="display:none">
 <script src="app.js"></script>
 </body>
 </html>
