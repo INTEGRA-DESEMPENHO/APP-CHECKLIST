@@ -4,7 +4,7 @@
 ═══════════════════════════════════════════════════════ */
 
 // ─── CONFIGURAÇÃO — TROQUE PELA SUA URL DO GAS ───────────
-var GAS_URL = 'https://sheetdb.io/api/v1/p5kdwbijb335u'; 
+var GAS_URL = 'https://script.google.com/macros/s/AKfycbyS8urqPKwu8l6UnpyysKy5mweOH_u0zYKbpJajxXfQkdNeHSkev_EedbWDYCoylvlF/exec'; 
 // Exemplo: 'https://script.google.com/macros/s/AKfycbXXXXXXXXXXXX/exec'
 
 // ─── Chaves localStorage ─────────────────────────────────
