@@ -193,6 +193,7 @@ function callGas(action, params, method, body){
 }
 
 // ─── Carregar dados do GAS ───────────────────────────────
+var _carregandoU=null;
 async function carregar(u){
   carregarStatus();
   var sf=lsGet(LS_FILTROS)||{};
@@ -228,6 +229,15 @@ async function carregar(u){
     return;
   }
 
+  // SEM unidade selecionada: não chama o servidor (evita puxar a base inteira)
+  if(!u){
+    if(snet){snet.textContent='🌐 ONLINE';snet.className='snet online';}
+    return;
+  }
+  // evita disparar a mesma carga em duplicidade
+  if(_carregandoU===u)return;
+  _carregandoU=u;
+
   // 3) ONLINE: atualiza em segundo plano (tela já está usável) ─
   if(snet){snet.textContent=temCache?'🔄 Atualizando...':'⏳ Carregando...';snet.className='snet online';}
   if(!temCache)toast('⏳ Carregando planilha...');
@@ -258,6 +268,8 @@ async function carregar(u){
       if(snet){snet.textContent='❌ ERRO';snet.className='snet offline';}
       toast('❌ Erro: '+e.message,6000);
     }
+  }finally{
+    _carregandoU=null;
   }
 }
 
