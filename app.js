@@ -4,7 +4,7 @@
 ═══════════════════════════════════════════════════════ */
 
 // ─── CONFIGURAÇÃO — TROQUE PELA SUA URL DO GAS ───────────
-var GAS_URL = 'https://script.google.com/macros/s/AKfycbymdaCk8f1zM7AmuKNC26fTmyPcc-fQZsR-OcjFl8hbWL1DqMUAmYobPSx9hEU_qo5M/exec';
+var GAS_URL = 'https://script.google.com/macros/s/AKfycbzA3_bI_ZuwcyngihI3dDVljDr54d4AGk6q7Kj3gA6-GFY-sxLa4LR3ExyC5CYlQbHl/exec';
 
 // ─── Chaves localStorage ─────────────────────────────────
 var LS_STATUS  = 'vfx_status_v9';
@@ -210,6 +210,8 @@ async function carregar(u){
     STATUS=Object.assign(STATUS,cached.ultimosStatus||{});
     popularFiltros(cached.unidadesUnicas||[]);
     renderLista();updContadores();
+    if(u&&cached.historico)renderHist(cached.historico,u);
+    var _chjC=document.getElementById('chj');if(_chjC)_chjC.textContent=cached.hoje||0;
   }
 
   // 2) OFFLINE: permanece no cache ────────────────────────────
@@ -217,7 +219,7 @@ async function carregar(u){
     if(temCache){
       if(bcache)bcache.classList.add('vis');
       if(snet){snet.textContent='📦 OFFLINE';snet.className='snet offline';}
-      if(u)carregarHist(u);
+      if(u&&cached.historico)renderHist(cached.historico,u);
       toast('📦 Offline — usando cache local.');
     }else{
       if(snet){snet.textContent='🔴 OFFLINE';snet.className='snet offline';}
@@ -231,17 +233,19 @@ async function carregar(u){
   if(!temCache)toast('⏳ Carregando planilha...');
 
   try{
-    var r=await callGas('puxarDadosBase',{unidade:u||''});
-    DB     = r.dados          ||[];setRows();
-    STATUS = Object.assign(STATUS,r.ultimosStatus||{});
-    var unicas = r.unidadesUnicas||[];
+    var r=await callGas('carregarTudo',{unidade:u||''});
+    var base=r.base||r; // compat com versão antiga do backend
+    DB     = base.dados          ||[];setRows();
+    STATUS = Object.assign(STATUS,base.ultimosStatus||{});
+    var unicas = base.unidadesUnicas||[];
     salvarStatus();
-    salvarCacheDB({dados:DB,ultimosStatus:r.ultimosStatus||{},unidadesUnicas:unicas});
+    salvarCacheDB({dados:DB,ultimosStatus:base.ultimosStatus||{},unidadesUnicas:unicas,
+                   historico:r.historico||null,hoje:r.hoje||0});
     if(bcache)bcache.classList.remove('vis');
     popularFiltros(unicas);
     invRsCache();renderLista();updContadores();
-    if(u)carregarHist(u);
-    updHoje();
+    if(u&&r.historico)renderHist(r.historico,u);
+    var _chj=document.getElementById('chj');if(_chj)_chj.textContent=r.hoje||0;
     if(snet){snet.textContent='🌐 ONLINE';snet.className='snet online';}
     toast('✅ '+(DB.length>1?DB.length-1:0)+' itens carregados!');
   }catch(e){
@@ -820,17 +824,22 @@ async function baixarRelatorio(){
 }
 
 // ─── Histórico ────────────────────────────────────────────
+function renderHist(d,unidade){
+  var card=document.getElementById('chist'),cont=document.getElementById('hcont');
+  if(!card||!cont)return;
+  card.style.display='block';
+  if(!d||!d.meses||!d.meses.length){
+    cont.innerHTML='<div class="hload">Nenhum registro nos últimos 6 meses.</div>';return;
+  }
+  cont.innerHTML=buildHist(d,unidade);
+}
 async function carregarHist(unidade){
   var card=document.getElementById('chist'),cont=document.getElementById('hcont');
   if(!card||!cont)return;
   card.style.display='block';
   cont.innerHTML='<div class="hload">⏳ Carregando histórico...</div>';
   try{
-    var d=await callGas('obterHistorico6Meses',{unidade:unidade});
-    if(!d||!d.meses||!d.meses.length){
-      cont.innerHTML='<div class="hload">Nenhum registro nos últimos 6 meses.</div>';return;
-    }
-    cont.innerHTML=buildHist(d,unidade);
+    renderHist(await callGas('obterHistorico6Meses',{unidade:unidade}),unidade);
   }catch(e){
     cont.innerHTML='<div class="hload" style="color:var(--danger);">Erro ao carregar histórico.</div>';
   }
