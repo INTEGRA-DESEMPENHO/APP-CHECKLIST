@@ -4,13 +4,14 @@
 ═══════════════════════════════════════════════════════ */
 
 // ─── CONFIGURAÇÃO — TROQUE PELA SUA URL DO GAS ───────────
-var GAS_URL = 'https://script.google.com/macros/s/AKfycbz8-L_gnzCs3zJ_ozxY1dmIJy2cXCqNNGzEwvCu1zaUdSKPro0MeA-RwRerK3xD0XL0/exec';
+var GAS_URL = 'https://script.google.com/macros/s/AKfycbyqC-SpuOt_QoTW3B7BYuu-l8eHA0psU1B7xUR72YEDsqllNmkAZVMZJb4fnf5Q-ho/exec';
 
 // ─── Chaves localStorage ─────────────────────────────────
 var LS_STATUS  = 'vfx_status_v9';
 var LS_FILA    = 'vfx_fila_v9';
 var LS_FILTROS = 'vfx_filt_v9';
 var LS_CACHE   = 'vfx_cache_v9';
+var LS_SESSAO  = 'vfx_sessao_v9';  // avaliações em andamento (offline/automático)
 
 // ─── Estado global ────────────────────────────────────────
 var DB      = [];   // array de arrays (linha 0 = cabeçalho)
@@ -29,7 +30,7 @@ function setRows(){ ROWS = DB.length>1 ? DB.slice(1) : []; }
 // Acesso O(1) aos itens da sessão (substitui SEL.find linear)
 function getSel(uid){ return SELIDX[uid]; }
 function addSel(s){ SEL.push(s); SELIDX[s.uid]=s; return s; }
-function clearSel(){ SEL=[]; SELIDX={}; FSUB=[]; }
+function clearSel(){ SEL=[]; SELIDX={}; FSUB=[]; try{localStorage.removeItem(LS_SESSAO);}catch(e){} }
 
 // ─── Índices das colunas no DB ───────────────────────────
 var DI = {
@@ -50,6 +51,21 @@ var ACHADOS = [
   'Área bloqueada','Estrutura comprometida','Elétrica exposta',
   'Piso danificado','Porta/janela com defeito'
 ];
+
+// Subambientes/ambientes que devem ser reavaliados SEMPRE (mesmo se OK),
+// pois podem apresentar defeito a qualquer momento.
+// Casa por "contém" no NOME DO AMBIENTE (DI.SUB = texto por extenso),
+// MAS ignora quando o nome contém "escada" (ex.: "Escada 1 à direita dos elevadores").
+var REAVAL_SEMPRE = ['elevador','bebedouro'];
+function reavalSempre(item){
+  var nome=nrm(item&&item[DI.SUB]);
+  if(!nome)return false;
+  if(nome.indexOf('escada')>=0)return false; // exceção pedida
+  for(var i=0;i<REAVAL_SEMPRE.length;i++){
+    if(nome.indexOf(REAVAL_SEMPRE[i])>=0)return true;
+  }
+  return false;
+}
 
 // ─── Utilitários ─────────────────────────────────────────
 function nrm(s){
@@ -84,6 +100,19 @@ function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
 
 // ─── Status (localStorage) ────────────────────────────────
 function carregarStatus(){STATUS=lsGet(LS_STATUS)||{};}
+// ─── Sessão de avaliação (persistida p/ offline + marcação automática) ──
+function salvarSessao(){
+  try{ lsSet(LS_SESSAO,{u:(document.getElementById('u')||{value:''}).value.trim(),sel:SEL,fsub:FSUB}); }catch(e){}
+}
+function restaurarSessao(){
+  var s=lsGet(LS_SESSAO);
+  if(!s||!s.sel)return;
+  var uAtual=(document.getElementById('u')||{value:''}).value.trim();
+  if(s.u&&uAtual&&s.u!==uAtual)return; // sessão era de outra unidade
+  SEL=[];SELIDX={};
+  (s.sel||[]).forEach(function(it){ if(it&&it.uid){SEL.push(it);SELIDX[it.uid]=it;} });
+  FSUB=s.fsub||[];
+}
 function salvarStatus(){lsSet(LS_STATUS,STATUS);}
 
 // ─── Fila offline ────────────────────────────────────────
@@ -131,6 +160,13 @@ function precisaReaval(uid){
   }
   _reavalCache[uid]=r;return r;
 }
+// True quando o item, estando OK, deve voltar a ser avaliado:
+// ou venceu o ciclo de 6 meses, ou é subambiente de reavaliação sempre.
+function venceuCiclo(item){
+  var uid=item[DI.UID];
+  if(reavalSempre(item))return true;
+  return precisaReaval(uid);
+}
 function mesesDesde(uid){
   if(_mesesCache[uid]!==undefined)return _mesesCache[uid];
   var r=null,st=STATUS[uid];
@@ -146,10 +182,21 @@ function mesesDesde(uid){
 
 // ─── Status do item ───────────────────────────────────────
 function invRsCache(){_rsCache={};_reavalCache={};_mesesCache={};}
+// Status efetivo (considera ciclo de 6 meses / reaval-sempre)
 function resStatus(item){
   var uid=item[DI.UID];
   if(_rsCache[uid]!==undefined)return _rsCache[uid];
   var r=_calcStatus(item);_rsCache[uid]=r;return r;
+}
+// Último status GRAVADO, puro (para mostrar como histórico no card)
+function statusAnterior(uid){
+  var st=STATUS[uid];
+  if(!st||!st.status)return'';
+  var rc=st.status.trim().toUpperCase();
+  if(rc==='OK')return'Ok';
+  if(rc==='INADEQUADO')return'Inadequado';
+  if(rc==='N/A')return'N/A';
+  return'';
 }
 function _calcStatus(item){
   var uid=item[DI.UID];
@@ -157,14 +204,17 @@ function _calcStatus(item){
   if(s&&s.v&&s.v.trim()!=='')return s.v;
   if(STATUS[uid]&&STATUS[uid].status){
     var rc=STATUS[uid].status.trim().toUpperCase();
-    if(rc==='OK')return'Ok';
+    if(rc==='OK'){
+      // OK que venceu o ciclo (6 meses) ou é reavaliação sempre volta a "não avaliado"
+      return venceuCiclo(item)?'Nao Avaliado':'Ok';
+    }
     if(rc==='INADEQUADO')return'Inadequado';
     if(rc==='N/A')return'N/A';
   }
   var inad=nrm(item[DI.INAD]);
   if(inad==='verdadeiro'||inad==='true')return'Inadequado';
   var adeq=nrm(item[DI.ADEQ]);
-  if(adeq==='verdadeiro'||adeq==='true')return'Ok';
+  if(adeq==='verdadeiro'||adeq==='true')return venceuCiclo(item)?'Nao Avaliado':'Ok';
   var aval=nrm(item[DI.AVAL]);
   if(aval==='n/a'||aval==='na')return'N/A';
   return'Nao Avaliado';
@@ -209,6 +259,7 @@ async function carregar(u){
   if(temCache){
     DB=cached.dados;setRows();
     STATUS=Object.assign(STATUS,cached.ultimosStatus||{});
+    restaurarSessao();
     popularFiltros(cached.unidadesUnicas||[]);
     renderLista();updContadores();
     if(u&&cached.historico)renderHist(cached.historico,u);
@@ -252,6 +303,7 @@ async function carregar(u){
     salvarCacheDB({dados:DB,ultimosStatus:base.ultimosStatus||{},unidadesUnicas:unicas,
                    historico:r.historico||null,hoje:r.hoje||0});
     if(bcache)bcache.classList.remove('vis');
+    restaurarSessao();
     popularFiltros(unicas);
     invRsCache();renderLista();updContadores();
     if(u&&r.historico)renderHist(r.historico,u);
@@ -355,9 +407,11 @@ function marcar(uid,v,uni,bl,pav,amb,desc,tipo){
   var s=getSel(uid);
   if(!s){
     s=addSel({uid:uid,v:'',obs:'',achados:[],p:desc,amb:amb,pav:pav,
-       fotos:[],tipo:tipo,unidade:uni,bloco:bl});
+       fotos:[],tipo:'Normal',unidade:uni,bloco:bl});
   }
   s.v=v;
+  s.tipo=v==='Inadequado'?'Inadequado':v==='N/A'?'N/A':v==='Ok'?'Adequado':'Normal';
+  salvarSessao(); // grava a escolha no aparelho na hora (automático + offline)
   var card=document.querySelector('.ic[data-uid="'+uid+'"]');
   if(card){
     card.querySelectorAll('.bopt').forEach(function(b){b.classList.remove('aok','ank','ana');});
@@ -368,7 +422,6 @@ function marcar(uid,v,uni,bl,pav,amb,desc,tipo){
     card.classList.remove('inad','ina','ior');
     if(v==='Inadequado')card.classList.add('inad');
     else if(v==='N/A')card.classList.add('ina');
-    else if(v==='Ok'&&precisaReaval(uid))card.classList.add('ior');
 
     var sf=document.getElementById('fst').value;
     var out=(sf==='NAO_AVALIADOS'&&(v==='Ok'||v==='Inadequado'||v==='N/A'))||
@@ -416,37 +469,48 @@ function progBarHTML(todos,sub){
 function cardH(item,idx){
   var uni=item[DI.UNI]||'',bl=item[DI.BLC]||'',pav=item[DI.PAV]||'';
   var amb=item[DI.SUB]||'',desc=item[DI.DESC]||'',uid=item[DI.UID];
-  var st=resStatus(item);
-  var sl=getSel(uid);
+  var st=resStatus(item);          // status considerando ciclo (p/ lista/contadores)
+  var sl=getSel(uid);              // escolha do usuário NESTA sessão (ou undefined)
+  var stAnt=statusAnterior(uid);   // último status gravado: 'Ok'/'Inadequado'/'N/A'/''
   var obs=(STATUS[uid]&&STATUS[uid].obs)||String(item[DI.OBS]||'').trim();
   var ach=(STATUS[uid]&&STATUS[uid].achados)||'';
   var pend=String(item[DI.PEND]||'').trim();
   var dtAv=(STATUS[uid]&&STATUS[uid].dataUltimaAval)||'';
+  var venc=venceuCiclo(item), semp=reavalSempre(item);
+  var mp=mesesDesde(uid);
+  // classes do card: refletem o status efetivo (já considerando ciclo vencido)
   var isOk=st==='Ok',isIN=st==='Inadequado',isNA=st==='N/A';
-  var prR=isOk&&precisaReaval(uid),mp=mesesDesde(uid);
-  var cls='ic'+(isNA?' ina':isIN?' inad':(isOk&&prR)?' ior':'');
-  var achSel=sl&&sl.achados?sl.achados:(ach?ach.split(', ').filter(Boolean):[]);
+  var cls='ic'+(isNA?' ina':isIN?' inad':'');
+  // SELEÇÃO dos botões: SOMENTE o que o usuário escolheu nesta sessão (não pré-seleciona)
+  var sv=sl&&sl.v?sl.v:'';
+  var aOk=sv==='Ok'?'aok':'',aNk=sv==='Inadequado'?'ank':'',aNa=sv==='N/A'?'ana':'';
+  var si=sv==='Ok'?'✅':sv==='Inadequado'?'❌':sv==='N/A'?'⚫':'⬜';
+  // achados só vêm marcados se escolhidos na sessão (histórico aparece no hHtml abaixo)
+  var achSel=sl&&sl.achados?sl.achados:[];
   var obsV=sl?esc(sl.obs||''):'';
   var fH=sl&&sl.fotos?sl.fotos.map(function(f,i){return thumbH(uid,i,f.b64);}).join(''):'';
-  var si=isOk?'✅':isIN?'❌':isNA?'⚫':'⬜';
-  var aOk=isOk?'aok':'',aNk=isIN?'ank':'',aNa=isNA?'ana':'';
-  var tipo=isIN?'Inadequado':isNA?'N/A':isOk?'Adequado':'Normal';
+  var tipo='Normal';
+  // tooltip do card: local + descrição + histórico resumido
+  var tip=pav+' › '+amb+' — '+desc;
+  if(stAnt)tip+=' | Última avaliação: '+stAnt+(dtAv?' em '+dtAv:'');
+  if(semp)tip+=' | Reavaliar sempre';
   var hHtml='';
-  if(pend||obs||ach){
+  if(pend||obs||ach||stAnt){
     hHtml='<div class="hbox">'+
+      (stAnt?'<div>🕓 <b>Última avaliação:</b> '+esc(stAnt)+(dtAv?' ('+esc(dtAv)+')':'')+'</div>':'')+
       (pend?'<div>📋 <b>Pendência:</b> '+esc(pend)+'</div>':'')+
       (obs ?'<div>💬 <b>Última obs:</b> '+esc(obs)+'</div>':'')+
       (ach ?'<div>🔎 <b>Achados:</b> '+esc(ach)+'</div>':'')+
     '</div>';
   }
-  var rvB=prR?'<div class="breavbadge">🔄 Reavaliação vencida'+(mp!==null?' ('+mp+'m)':'')+'</div>':
-    (isOk&&dtAv?'<div style="font-size:11px;color:var(--text2);margin-bottom:6px">✅ Avaliado em '+esc(dtAv)+'</div>':'');
-  var naB=isNA?'<div class="bnabadge">⚫ N/A — Retornar</div>':'';
+  var rvB=semp?'<div class="breavbadge">🔁 Reavaliar sempre (pode apresentar defeito)</div>':
+    (venc&&stAnt==='Ok'?'<div class="breavbadge">🔄 Reavaliação vencida'+(mp!==null?' ('+mp+'m)':'')+'</div>':'');
+  var naB=stAnt==='N/A'?'<div class="bnabadge">⚫ Estava N/A — Retornar</div>':'';
   var chips=ACHADOS.map(function(a){
     return '<span class="chip'+(achSel.indexOf(a)>=0?' sel':'')+
       '" data-uid="'+esc(uid)+'" data-ach="'+esc(a)+'">'+esc(a)+'</span>';
   }).join('');
-  return '<div class="'+cls+'" data-uid="'+esc(uid)+'">' +
+  return '<div class="'+cls+'" data-uid="'+esc(uid)+'" title="'+esc(tip)+'">' +
     '<div class="ihr">'+
       '<div class="inum">'+(idx+1)+'</div>'+
       '<div class="iinf">'+
@@ -967,6 +1031,7 @@ function onTA(e){
         pav:orig[DI.PAV]||'',fotos:[],tipo:'Normal',unidade:orig[DI.UNI]||'',bloco:orig[DI.BLC]||''});
   }
   sl.obs=ta.value;
+  salvarSessao();
 }
 function toggleAch(uid,ach){
   var sl=getSel(uid);
@@ -981,6 +1046,7 @@ function toggleAch(uid,ach){
   document.querySelectorAll('.chip[data-uid="'+uid+'"]').forEach(function(c){
     if(c.dataset.ach===ach)c.classList.toggle('sel',sl.achados.indexOf(ach)>=0);
   });
+  salvarSessao();
 }
 function irParaSub(uni,bl,pav,sub,st){
   document.getElementById('u').value=uni;
