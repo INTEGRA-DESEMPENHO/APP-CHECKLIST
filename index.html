@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-  <title>Vistoria Fênix v9</title>
+  <title>App Checklist</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
@@ -14,7 +14,7 @@
   <!-- HEADER -->
   <div class="hcard">
     <div class="topbar">
-      <div class="apptitle">Vistoria Fênix <span>v9</span></div>
+      <div class="apptitle">App Checklist</div>
       <div class="sg">
         <div id="snet" class="snet online">⏳ Carregando</div>
         <div id="sfila" class="sfila" style="display:none">⏳ Fila: 0</div>
@@ -28,22 +28,34 @@
     <div class="gf">
       <div>
         <label>🏢 UNIDADE</label>
-        <input type="text" id="u" list="lu" placeholder="Selecione..." autocomplete="off">
+        <div class="fwrap">
+          <input type="text" id="u" list="lu" placeholder="Selecione..." autocomplete="off">
+          <button type="button" class="fclr" data-clr="u" title="Limpar unidade" aria-label="Limpar">×</button>
+        </div>
         <datalist id="lu"></datalist>
       </div>
       <div>
         <label>📦 BLOCO</label>
-        <input type="text" id="b" list="lb" placeholder="Todos..." autocomplete="off">
+        <div class="fwrap">
+          <input type="text" id="b" list="lb" placeholder="Todos..." autocomplete="off">
+          <button type="button" class="fclr" data-clr="b" title="Limpar bloco" aria-label="Limpar">×</button>
+        </div>
         <datalist id="lb"></datalist>
       </div>
       <div>
         <label>📐 PAVIMENTO</label>
-        <input type="text" id="pav" list="lpav" placeholder="Todos..." autocomplete="off">
+        <div class="fwrap">
+          <input type="text" id="pav" list="lpav" placeholder="Todos..." autocomplete="off">
+          <button type="button" class="fclr" data-clr="pav" title="Limpar pavimento" aria-label="Limpar">×</button>
+        </div>
         <datalist id="lpav"></datalist>
       </div>
       <div>
         <label>🎯 SUBAMBIENTE</label>
-        <input type="text" id="sub" list="lsub" placeholder="Todos..." autocomplete="off">
+        <div class="fwrap">
+          <input type="text" id="sub" list="lsub" placeholder="Todos..." autocomplete="off">
+          <button type="button" class="fclr" data-clr="sub" title="Limpar subambiente" aria-label="Limpar">×</button>
+        </div>
         <datalist id="lsub"></datalist>
       </div>
       <div>
