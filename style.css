@@ -64,7 +64,29 @@ input[list] {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='%235f6368'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px;
 }
+/* remove a 2ª seta (indicador nativo do datalist) — deixa só a seta do CSS */
+input[list]::-webkit-calendar-picker-indicator {
+  display: none !important; opacity: 0; -webkit-appearance: none; appearance: none;
+}
 input[list].ok { border-color: var(--primary); font-weight: 600; }
+
+/* wrapper do campo + botão "x" para limpar filtro individual */
+.fwrap { position: relative; }
+.fwrap input[list] { padding-right: 56px; } /* espaço p/ seta + x */
+.fclr {
+  position: absolute; top: 50%; right: 34px; transform: translateY(-50%);
+  width: 20px; height: 20px; border: none; border-radius: 50%;
+  background: var(--border); color: var(--text2);
+  font-size: 15px; line-height: 1; cursor: pointer; display: none;
+  align-items: center; justify-content: center; padding: 0;
+  transition: background .15s, color .15s;
+}
+.fwrap input[list].ok ~ .fclr { display: flex; } /* só aparece com valor */
+.fclr:hover { background: var(--danger); color: #fff; }
+
+/* tooltip customizado nos cards (sobre o atributo title nativo já funciona,
+   este realça o cursor de ajuda) */
+.ic[title] { cursor: default; }
 .gf { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-top: 16px; }
 .bclear {
   background: #e8eaed; color: var(--text2); padding: 10px 16px;
