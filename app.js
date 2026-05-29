@@ -4,7 +4,7 @@
 ═══════════════════════════════════════════════════════ */
 
 // ─── CONFIGURAÇÃO — TROQUE PELA SUA URL DO GAS ───────────
-var GAS_URL = 'https://script.google.com/macros/s/AKfycbzP2ePrKsPFNafi4IuhcbmwUm3tN8xvC11RVgUBidVLyZYgCM5HeuEDlgXKnAircRYB/exec';
+var GAS_URL = 'https://script.google.com/macros/s/AKfycbz8-L_gnzCs3zJ_ozxY1dmIJy2cXCqNNGzEwvCu1zaUdSKPro0MeA-RwRerK3xD0XL0/exec';
 
 // ─── Chaves localStorage ─────────────────────────────────
 var LS_STATUS  = 'vfx_status_v9';
