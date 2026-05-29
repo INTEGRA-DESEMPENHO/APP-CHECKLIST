@@ -4,7 +4,7 @@
 ═══════════════════════════════════════════════════════ */
 
 // ─── CONFIGURAÇÃO — TROQUE PELA SUA URL DO GAS ───────────
-var GAS_URL = 'https://script.google.com/macros/s/AKfycbyqC-SpuOt_QoTW3B7BYuu-l8eHA0psU1B7xUR72YEDsqllNmkAZVMZJb4fnf5Q-ho/exec';
+var GAS_URL = 'https://script.google.com/macros/s/AKfycbzjLoZU39uhIsHqwXFA46_H0B6v-kxyvDqTm3sIsUuVogwsj5BodF51giuztD87F65O/exec';
 
 // ─── Chaves localStorage ─────────────────────────────────
 var LS_STATUS  = 'vfx_status_v9';
@@ -708,6 +708,16 @@ function limparSecundarios(){
   document.getElementById('sub').value='';
   savFilt();invCache();invRsCache();renderLista();updCDebounced();
 }
+// Limpa um único filtro (botão "x" do campo). Se for a unidade, recarrega.
+function limparUm(id){
+  var el=document.getElementById(id);
+  if(!el)return;
+  el.value='';
+  mkpre(id);
+  savFilt();invCache();invRsCache();
+  if(id==='u'){carregar();}
+  else{renderLista();updCDebounced();}
+}
 
 // ─── Contadores / progresso ───────────────────────────────
 function updPG(){
@@ -994,6 +1004,9 @@ function pararVoz(){
 // ─── Eventos ──────────────────────────────────────────────
 function onClick(e){
   var t=e.target;
+
+  var fclr=t.closest&&t.closest('.fclr');
+  if(fclr){e.preventDefault();limparUm(fclr.dataset.clr);return;}
 
   var bopt=t.closest&&t.closest('.bopt');
   if(bopt){
