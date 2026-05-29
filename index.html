@@ -36,24 +36,27 @@
       </div>
       <div>
         <label>📦 BLOCO</label>
-        <div class="ms" id="ms-b" data-target="b">
-          <button type="button" class="ms-btn" data-ms="b"><span class="ms-lbl">Todos...</span><span class="ms-arrow">▾</span></button>
-          <div class="ms-pop" id="pop-b"></div>
+        <div class="fwrap">
+          <input type="text" id="b" list="lb" placeholder="Todos..." autocomplete="off">
+          <button type="button" class="fclr" data-clr="b" title="Limpar bloco" aria-label="Limpar">×</button>
         </div>
+        <datalist id="lb"></datalist>
       </div>
       <div>
         <label>📐 PAVIMENTO</label>
-        <div class="ms" id="ms-pav" data-target="pav">
-          <button type="button" class="ms-btn" data-ms="pav"><span class="ms-lbl">Todos...</span><span class="ms-arrow">▾</span></button>
-          <div class="ms-pop" id="pop-pav"></div>
+        <div class="fwrap">
+          <input type="text" id="pav" list="lpav" placeholder="Todos..." autocomplete="off">
+          <button type="button" class="fclr" data-clr="pav" title="Limpar pavimento" aria-label="Limpar">×</button>
         </div>
+        <datalist id="lpav"></datalist>
       </div>
       <div>
         <label>🎯 SUBAMBIENTE</label>
-        <div class="ms" id="ms-sub" data-target="sub">
-          <button type="button" class="ms-btn" data-ms="sub"><span class="ms-lbl">Todos...</span><span class="ms-arrow">▾</span></button>
-          <div class="ms-pop" id="pop-sub"></div>
+        <div class="fwrap">
+          <input type="text" id="sub" list="lsub" placeholder="Todos..." autocomplete="off">
+          <button type="button" class="fclr" data-clr="sub" title="Limpar subambiente" aria-label="Limpar">×</button>
         </div>
+        <datalist id="lsub"></datalist>
       </div>
       <div>
         <label>🔍 STATUS</label>
