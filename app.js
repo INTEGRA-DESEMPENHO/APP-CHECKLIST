@@ -346,7 +346,7 @@ function popularFiltros(unicas){
   document.getElementById('b').value   =sf.b   ||'';
   document.getElementById('pav').value =sf.pav ||'';
   document.getElementById('sub').value =sf.sub ||'';
-  document.getElementById('fst').value =sf.fst ||'NAO_AVALIADOS';
+  document.getElementById('fst').value =sf.fst ||'TUDO';
   ['resp','u','b','pav','sub'].forEach(mkpre);
 }
 function mkpre(id){
@@ -360,7 +360,7 @@ function savFilt(){
     b   :(document.getElementById('b')   ||{value:''}).value.trim(),
     pav :(document.getElementById('pav') ||{value:''}).value.trim(),
     sub :(document.getElementById('sub') ||{value:''}).value.trim(),
-    fst :(document.getElementById('fst') ||{value:'NAO_AVALIADOS'}).value
+    fst :(document.getElementById('fst') ||{value:'TUDO'}).value
   });
   ['resp','u','b','pav','sub'].forEach(mkpre);
 }
